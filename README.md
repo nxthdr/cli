@@ -11,22 +11,15 @@ cargo install nxthdr
 ## Usage
 
 ```bash
-# Interact with peering platform
-nxthdr peering
-
-# Interact with probing platform
-nxthdr probing
-
-# Verbose logging
-nxthdr peering -vvv
+nxthdr help
 ```
 
-## Development
+### Authentication
 
 ```bash
-# Build
-cargo build
+# Log into the platform
+nxthdr login
 
-# Run tests
-cargo test
+# Log out from the platform
+nxthdr logout
 ```
