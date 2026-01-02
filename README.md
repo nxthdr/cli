@@ -29,7 +29,4 @@ cargo build
 
 # Run tests
 cargo test
-
-# Run with verbose logging
-cargo run -- peering local bird-status -vvv
 ```
