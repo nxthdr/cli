@@ -1,0 +1,16 @@
+name: Clean
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'nxthdr'
+          package-type: 'container'
+          min-versions-to-keep: 10
+          delete-only-untagged-versions: 'true'
