@@ -36,22 +36,13 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum PeeringCommands {
-    #[command(about = "Manage ASN")]
-    Asn {
-        #[command(subcommand)]
-        command: AsnCommands,
-    },
+    #[command(about = "Get your ASN")]
+    Asn,
     #[command(about = "Manage prefix leases")]
     Prefix {
         #[command(subcommand)]
         command: PrefixCommands,
     },
-}
-
-#[derive(Subcommand)]
-enum AsnCommands {
-    #[command(about = "Get your ASN information")]
-    Get,
 }
 
 #[derive(Subcommand)]
@@ -99,11 +90,9 @@ async fn main() -> anyhow::Result<()> {
 
 async fn handle_peering(command: PeeringCommands) -> anyhow::Result<()> {
     match command {
-        PeeringCommands::Asn { command } => match command {
-            AsnCommands::Get => {
-                handle_asn_get().await?;
-            }
-        },
+        PeeringCommands::Asn => {
+            handle_asn_get().await?;
+        }
         PeeringCommands::Prefix { command } => match command {
             PrefixCommands::List => {
                 handle_prefix_list().await?;
