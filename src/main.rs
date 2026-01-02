@@ -203,7 +203,8 @@ async fn handle_prefix_request(duration: u32) -> anyhow::Result<()> {
 
 async fn handle_prefix_revoke(prefix: &str) -> anyhow::Result<()> {
     let client = api::ApiClient::new();
-    let path = format!("/api/user/prefix/{}", prefix);
+    let encoded_prefix = urlencoding::encode(prefix);
+    let path = format!("/api/user/prefix/{}", encoded_prefix);
     client.delete(&path).await?;
 
     println!("✓ Prefix lease revoked successfully");
