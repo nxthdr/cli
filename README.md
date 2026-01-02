@@ -1,6 +1,6 @@
 # CLI
 
-Command line interface for nxthdr platform.
+Command line interface for the nxthdr platform.
 
 ## Installation
 
@@ -17,9 +17,9 @@ nxthdr help
 ### Authentication
 
 ```bash
-# Log into the platform
+# Log in to the platform
 nxthdr login
 
-# Log out from the platform
+# Log out of the platform
 nxthdr logout
 ```
