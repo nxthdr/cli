@@ -337,9 +337,7 @@ fn handle_status() -> anyhow::Result<()> {
 
     if is_expired {
         println!("Access token: Expired");
-        println!(
-            "\nYour access token has expired. It will be automatically refreshed on next API call."
-        );
+        println!("\nYour access token has expired. Please run 'nxthdr login' again.");
     } else {
         let hours = time_until_expiry / 3600;
         let minutes = (time_until_expiry % 3600) / 60;
