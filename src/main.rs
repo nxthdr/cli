@@ -43,6 +43,17 @@ enum PeeringCommands {
         #[command(subcommand)]
         command: PrefixCommands,
     },
+    #[command(about = "PeerLab utilities")]
+    Peerlab {
+        #[command(subcommand)]
+        command: PeerlabCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum PeerlabCommands {
+    #[command(about = "Generate .env file for PeerLab")]
+    Env,
 }
 
 #[derive(Subcommand)]
@@ -102,6 +113,11 @@ async fn handle_peering(command: PeeringCommands) -> anyhow::Result<()> {
             }
             PrefixCommands::Revoke { prefix } => {
                 handle_prefix_revoke(&prefix).await?;
+            }
+        },
+        PeeringCommands::Peerlab { command } => match command {
+            PeerlabCommands::Env => {
+                handle_peerlab_env().await?;
             }
         },
     }
@@ -197,6 +213,56 @@ async fn handle_prefix_revoke(prefix: &str) -> anyhow::Result<()> {
     client.delete(&path).await?;
 
     println!("✓ Prefix lease revoked successfully");
+
+    Ok(())
+}
+
+async fn handle_peerlab_env() -> anyhow::Result<()> {
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct PrefixLease {
+        prefix: String,
+    }
+
+    #[derive(Deserialize)]
+    struct UserInfo {
+        asn: Option<i32>,
+        active_leases: Vec<PrefixLease>,
+    }
+
+    let client = api::ApiClient::new();
+    let user_info: UserInfo = client.get("/api/user/info").await?;
+
+    let asn = user_info.asn.unwrap_or_else(|| {
+        eprintln!("# Warning: No ASN assigned yet. Using placeholder value.");
+        eprintln!("# An ASN will be automatically assigned on first use.");
+        64512
+    });
+
+    let prefixes = if user_info.active_leases.is_empty() {
+        String::new()
+    } else {
+        user_info
+            .active_leases
+            .iter()
+            .map(|lease| lease.prefix.clone())
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+
+    println!("# PeerLab User Configuration");
+    println!();
+    println!("# Your ASN (use a private ASN from the range 64512-65534)");
+    println!("USER_ASN={}", asn);
+    println!();
+    println!("# IPv6 prefixes to advertise (comma-separated list)");
+    println!("# Examples:");
+    println!("#   Single prefix:  USER_PREFIXES=2001:db8:1234::/48");
+    println!("#   Multiple:       USER_PREFIXES=2001:db8:1234::/48,2001:db8:5678::/48");
+    println!("# Leave empty to not advertise any prefixes (receive-only mode)");
+    println!("USER_PREFIXES={}", prefixes);
+    println!();
 
     Ok(())
 }

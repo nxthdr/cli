@@ -23,3 +23,12 @@ nxthdr login
 # Log out of the platform
 nxthdr logout
 ```
+
+### PeerLab Integration
+
+```bash
+# Generate .env file for PeerLab
+nxthdr peering peerlab env > .env
+```
+
+This command automatically generates a PeerLab `.env` file using your assigned ASN and active prefix leases from nxthdr.
