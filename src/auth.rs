@@ -149,3 +149,62 @@ pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<(String,
         }
     }
 }
+
+#[derive(Debug, Serialize)]
+struct RefreshTokenRequest {
+    grant_type: String,
+    client_id: String,
+    refresh_token: String,
+}
+
+pub async fn refresh_access_token(refresh_token: &str) -> Result<(String, String, i64)> {
+    let client = reqwest::Client::new();
+    let domain = get_auth0_domain();
+    let url = format!("https://{}/oauth/token", domain);
+
+    let request = RefreshTokenRequest {
+        grant_type: "refresh_token".to_string(),
+        client_id: get_client_id(),
+        refresh_token: refresh_token.to_string(),
+    };
+
+    let response = client
+        .post(&url)
+        .json(&request)
+        .send()
+        .await
+        .context("Failed to refresh token")?;
+
+    let status = response.status();
+    let response_text = response.text().await?;
+
+    if !status.is_success() {
+        anyhow::bail!("Token refresh failed: {}", response_text);
+    }
+
+    #[derive(Deserialize)]
+    struct RefreshResponse {
+        access_token: String,
+        #[serde(default)]
+        refresh_token: Option<String>,
+        expires_in: u64,
+    }
+
+    let refresh_response: RefreshResponse = serde_json::from_str(&response_text).context(
+        format!("Failed to parse refresh response. Body: {}", response_text),
+    )?;
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let expires_at = now + refresh_response.expires_in as i64;
+
+    Ok((
+        refresh_response.access_token,
+        refresh_response
+            .refresh_token
+            .unwrap_or_else(|| refresh_token.to_string()),
+        expires_at,
+    ))
+}

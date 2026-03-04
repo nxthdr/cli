@@ -269,10 +269,46 @@ async fn handle_peerlab_env() -> anyhow::Result<()> {
 
 async fn handle_login() -> anyhow::Result<()> {
     if config::tokens_exist() {
-        println!(
-            "You are already logged in. Run 'nxthdr logout' first if you want to login again."
-        );
-        return Ok(());
+        let tokens = config::load_tokens()?;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        if tokens.expires_at >= now {
+            println!(
+                "You are already logged in. Run 'nxthdr logout' first if you want to login again."
+            );
+            return Ok(());
+        }
+
+        if tokens.refresh_token.is_empty() {
+            println!("Your access token has expired and no refresh token is available.");
+            println!("Please run 'nxthdr logout' and then 'nxthdr login' again.");
+            return Ok(());
+        }
+
+        println!("Refreshing expired access token...");
+
+        match auth::refresh_access_token(&tokens.refresh_token).await {
+            Ok((access_token, refresh_token, expires_at)) => {
+                let new_tokens = config::TokenStorage {
+                    access_token,
+                    refresh_token,
+                    expires_at,
+                };
+
+                config::save_tokens(&new_tokens)?;
+
+                println!("✓ Access token refreshed successfully!");
+                return Ok(());
+            }
+            Err(e) => {
+                println!("Failed to refresh token: {}", e);
+                println!("Please run 'nxthdr logout' and then 'nxthdr login' again.");
+                return Ok(());
+            }
+        }
     }
 
     println!("Starting authentication...\n");
