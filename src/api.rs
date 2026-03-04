@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::config;
 
 const DEFAULT_API_BASE_URL: &str = "https://peerlab.nxthdr.dev";
+const DEFAULT_SAIMIRIS_API_BASE_URL: &str = "https://saimiris.nxthdr.dev";
 
 pub struct ApiClient {
     base_url: String,
@@ -15,6 +16,16 @@ impl ApiClient {
     pub fn new() -> Self {
         let base_url =
             std::env::var("NXTHDR_API_URL").unwrap_or_else(|_| DEFAULT_API_BASE_URL.to_string());
+
+        Self {
+            base_url,
+            client: reqwest::Client::new(),
+        }
+    }
+
+    pub fn new_saimiris() -> Self {
+        let base_url = std::env::var("NXTHDR_SAIMIRIS_API_URL")
+            .unwrap_or_else(|_| DEFAULT_SAIMIRIS_API_BASE_URL.to_string());
 
         Self {
             base_url,

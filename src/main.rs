@@ -31,7 +31,16 @@ enum Commands {
         command: PeeringCommands,
     },
     #[command(about = "Interact with probing platform")]
-    Probing,
+    Probing {
+        #[command(subcommand)]
+        command: ProbingCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProbingCommands {
+    #[command(about = "Show your probing credits usage")]
+    Credits,
 }
 
 #[derive(Subcommand)]
@@ -91,9 +100,44 @@ async fn main() -> anyhow::Result<()> {
         Commands::Peering { command } => {
             handle_peering(command).await?;
         }
-        Commands::Probing => {
-            println!("Probing command not yet implemented");
+        Commands::Probing { command } => {
+            handle_probing(command).await?;
         }
+    }
+
+    Ok(())
+}
+
+async fn handle_probing(command: ProbingCommands) -> anyhow::Result<()> {
+    match command {
+        ProbingCommands::Credits => {
+            handle_probing_credits().await?;
+        }
+    }
+    Ok(())
+}
+
+async fn handle_probing_credits() -> anyhow::Result<()> {
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct UserUsage {
+        used: u32,
+        limit: u32,
+    }
+
+    let client = api::ApiClient::new_saimiris();
+    let usage: UserUsage = client.get("/api/user/me").await?;
+
+    println!("Probing credits (today):");
+    println!("  Used:  {}", usage.used);
+    println!("  Limit: {}", usage.limit);
+
+    let remaining = usage.limit.saturating_sub(usage.used);
+    println!("  Remaining: {}", remaining);
+
+    if usage.used >= usage.limit {
+        println!("\n⚠ Daily credit limit reached. Resets at midnight UTC.");
     }
 
     Ok(())
