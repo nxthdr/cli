@@ -50,6 +50,26 @@ impl ApiClient {
         Ok(tokens.access_token)
     }
 
+    pub async fn get_public<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let url = format!("{}{}", self.base_url, path);
+        tracing::debug!("GET (public) {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to send request")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            anyhow::bail!("API request failed with status {}: {}", status, error_body);
+        }
+
+        response.json::<T>().await.context("Failed to parse response")
+    }
+
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         let token = self.get_valid_token().await?;
         let url = format!("{}{}", self.base_url, path);
