@@ -197,6 +197,7 @@ pub async fn send(
     output::kv(&pairs);
 
     let hint = agent_src.iter().map(|(_, ip)| format!("--src-ip {ip}")).collect::<Vec<_>>().join(" ");
+    output::hint(&format!("nxthdr probing measurement-status {}", response.id));
     output::hint(&format!("nxthdr probing results {hint}"));
 
     Ok(())
@@ -261,6 +262,54 @@ async fn query_clickhouse(sql: &str) -> anyhow::Result<Vec<serde_json::Value>> {
         .filter(|l| !l.is_empty())
         .map(|l| serde_json::from_str(l).context("Failed to parse ClickHouse row"))
         .collect()
+}
+
+pub async fn measurement_status(id: &str) -> anyhow::Result<()> {
+    #[derive(serde::Deserialize)]
+    struct AgentStatus {
+        agent_id: String,
+        expected_probes: i64,
+        sent_probes: i64,
+        is_complete: bool,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct MeasurementStatus {
+        measurement_id: String,
+        total_agents: i64,
+        completed_agents: i64,
+        total_expected_probes: i64,
+        total_sent_probes: i64,
+        measurement_complete: bool,
+        agents: Vec<AgentStatus>,
+    }
+
+    let status: MeasurementStatus = api::ApiClient::new_saimiris()
+        .get(&format!("/api/measurement/{id}/status"))
+        .await?;
+
+    let overall = if status.measurement_complete { "complete" } else { "in progress" };
+    output::section("measurement");
+    output::kv(&[
+        ("id", &status.measurement_id),
+        ("status", overall),
+        ("agents", &format!("{}/{} complete", status.completed_agents, status.total_agents)),
+        ("probes", &format!("{}/{} sent", status.total_sent_probes, status.total_expected_probes)),
+    ]);
+
+    if !status.agents.is_empty() {
+        let rows: Vec<Vec<String>> = status.agents.iter().map(|a| {
+            let done = if a.is_complete { "yes" } else { "no" };
+            vec![
+                a.agent_id.clone(),
+                format!("{}/{}", a.sent_probes, a.expected_probes),
+                done.to_string(),
+            ]
+        }).collect();
+        output::table(&["agent", "probes sent/expected", "complete"], &rows);
+    }
+
+    Ok(())
 }
 
 /// Generate 48 random bits to use as the host part of a /80 source address.
