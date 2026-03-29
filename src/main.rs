@@ -113,6 +113,25 @@ enum PrefixCommands {
         #[arg(help = "Prefix to revoke (e.g., 2001:db8::/48)")]
         prefix: String,
     },
+    #[command(about = "Manage RPKI ROA for a leased prefix")]
+    Rpki {
+        #[command(subcommand)]
+        command: RpkiCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum RpkiCommands {
+    #[command(about = "Enable RPKI ROA for a leased prefix")]
+    Enable {
+        #[arg(help = "Prefix (e.g., 2001:db8::/48)")]
+        prefix: String,
+    },
+    #[command(about = "Disable RPKI ROA for a leased prefix")]
+    Disable {
+        #[arg(help = "Prefix (e.g., 2001:db8::/48)")]
+        prefix: String,
+    },
 }
 
 fn now_secs() -> i64 {
@@ -154,6 +173,10 @@ async fn handle_peering(command: PeeringCommands) -> anyhow::Result<()> {
             PrefixCommands::List => peering::prefix_list().await,
             PrefixCommands::Request { duration } => peering::prefix_request(duration).await,
             PrefixCommands::Revoke { prefix } => peering::prefix_revoke(&prefix).await,
+            PrefixCommands::Rpki { command } => match command {
+                RpkiCommands::Enable { prefix } => peering::prefix_rpki(&prefix, true).await,
+                RpkiCommands::Disable { prefix } => peering::prefix_rpki(&prefix, false).await,
+            },
         },
         PeeringCommands::Peerlab { command } => match command {
             PeerlabCommands::Env => peering::peerlab_env().await,

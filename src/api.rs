@@ -133,6 +133,35 @@ impl ApiClient {
         Ok(data)
     }
 
+    pub async fn put<T: DeserializeOwned, B: serde::Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T> {
+        let token = self.get_valid_token().await?;
+        let url = format!("{}{}", self.base_url, path);
+
+        tracing::debug!("PUT {}", url);
+
+        let response = self
+            .client
+            .put(&url)
+            .bearer_auth(&token)
+            .json(body)
+            .send()
+            .await
+            .context("Failed to send request")?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            anyhow::bail!("API request failed with status {}: {}", status, error_body);
+        }
+
+        response.json::<T>().await.context("Failed to parse response")
+    }
+
     pub async fn delete(&self, path: &str) -> Result<()> {
         let token = self.get_valid_token().await?;
         let url = format!("{}{}", self.base_url, path);

@@ -26,6 +26,8 @@ pub async fn prefix_list() -> anyhow::Result<()> {
     struct PrefixLease {
         prefix: String,
         end_time: String,
+        #[serde(default)]
+        rpki_enabled: bool,
     }
 
     #[derive(Deserialize)]
@@ -44,9 +46,13 @@ pub async fn prefix_list() -> anyhow::Result<()> {
     }
 
     let rows: Vec<Vec<String>> = user_info.active_leases.iter()
-        .map(|l| vec![l.prefix.clone(), l.end_time.clone()])
+        .map(|l| vec![
+            l.prefix.clone(),
+            l.end_time.clone(),
+            if l.rpki_enabled { "enabled".to_string() } else { "disabled".to_string() },
+        ])
         .collect();
-    output::table(&["prefix", "expires"], &rows);
+    output::table(&["prefix", "expires", "rpki"], &rows);
 
     Ok(())
 }
@@ -80,6 +86,34 @@ pub async fn prefix_revoke(prefix: &str) -> anyhow::Result<()> {
         .delete(&format!("/api/user/prefix/{}", urlencoding::encode(prefix)))
         .await?;
     output::success("prefix lease revoked");
+    Ok(())
+}
+
+pub async fn prefix_rpki(prefix: &str, enabled: bool) -> anyhow::Result<()> {
+    #[derive(Serialize)]
+    struct SetRpkiRequest {
+        enabled: bool,
+    }
+
+    #[derive(Deserialize)]
+    struct SetRpkiResponse {
+        rpki_enabled: bool,
+        message: String,
+    }
+
+    let response: SetRpkiResponse = api::ApiClient::new()
+        .put(
+            &format!("/api/user/prefix/{}/rpki", urlencoding::encode(prefix)),
+            &SetRpkiRequest { enabled },
+        )
+        .await?;
+
+    output::success(&response.message);
+    output::kv(&[
+        ("prefix", prefix),
+        ("rpki", if response.rpki_enabled { "enabled" } else { "disabled" }),
+    ]);
+
     Ok(())
 }
 
