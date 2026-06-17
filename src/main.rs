@@ -4,6 +4,7 @@ mod config;
 mod output;
 mod peering;
 mod probing;
+mod ris;
 
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
@@ -90,6 +91,13 @@ enum PeeringCommands {
     Peerlab {
         #[command(subcommand)]
         command: PeerlabCommands,
+    },
+    #[command(about = "Show your leased prefixes as seen by public BGP collectors (RIPE RIS)")]
+    Routes,
+    #[command(about = "Looking glass: how a prefix is seen by public BGP collectors (RIPE RIS)")]
+    Lookup {
+        #[arg(help = "Prefix or IP to look up (e.g., 2001:db8::/48)")]
+        prefix: String,
     },
 }
 
@@ -181,6 +189,8 @@ async fn handle_peering(command: PeeringCommands) -> anyhow::Result<()> {
         PeeringCommands::Peerlab { command } => match command {
             PeerlabCommands::Env => peering::peerlab_env().await,
         },
+        PeeringCommands::Routes => peering::routes().await,
+        PeeringCommands::Lookup { prefix } => peering::lookup(&prefix).await,
     }
 }
 

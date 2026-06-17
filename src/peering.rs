@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{api, output};
+use crate::{api, output, ris};
 
 pub async fn asn() -> anyhow::Result<()> {
     #[derive(Deserialize)]
@@ -157,6 +157,139 @@ pub async fn peerlab_env() -> anyhow::Result<()> {
     println!("# Leave empty to not advertise any prefixes (receive-only mode)");
     println!("USER_PREFIXES={prefixes}");
     println!();
+
+    Ok(())
+}
+
+pub async fn routes() -> anyhow::Result<()> {
+    #[derive(Deserialize)]
+    struct PrefixLease {
+        prefix: String,
+    }
+
+    #[derive(Deserialize)]
+    struct UserInfo {
+        active_leases: Vec<PrefixLease>,
+    }
+
+    let user_info: UserInfo = api::ApiClient::new().get("/api/user/info").await?;
+
+    if user_info.active_leases.is_empty() {
+        if output::is_json() {
+            println!("[]");
+        } else {
+            output::info("no active prefix leases — nothing to announce");
+            output::hint("nxthdr peering prefix request <hours>");
+        }
+        return Ok(());
+    }
+
+    let full_feed = ris::full_feed_peers().await.ok();
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut any_invisible = false;
+    let mut as_of: Option<String> = None;
+    for lease in &user_info.active_leases {
+        let vis = ris::looking_glass(&lease.prefix).await?;
+        let visible = vis.is_visible();
+        any_invisible |= !visible;
+        as_of = as_of.or_else(|| vis.query_time.clone());
+        let origins = vis.origins();
+        let propagation = full_feed
+            .as_ref()
+            .and_then(|ff| ris::propagation_pct(vis.peer_count(), ff.for_resource(&lease.prefix)))
+            .map(|p| format!("{p}%"))
+            .unwrap_or_else(|| "-".to_string());
+        rows.push(vec![
+            lease.prefix.clone(),
+            if visible { "yes".to_string() } else { "no".to_string() },
+            propagation,
+            vis.collector_count().to_string(),
+            vis.peer_count().to_string(),
+            if origins.is_empty() { "-".to_string() } else { origins.join(", ") },
+            vis.shortest_path().unwrap_or_else(|| "-".to_string()),
+        ]);
+    }
+
+    output::table(
+        &["prefix", "visible", "propagation", "collectors", "peers", "origin", "shortest path"],
+        &rows,
+    );
+
+    if !output::is_json() {
+        let suffix = as_of.map(|t| format!(" (as of {t})")).unwrap_or_default();
+        // AS215011 is PeerLab's export ASN; user (private) ASNs are stripped on export.
+        output::info(&format!(
+            "\nseen by public BGP collectors (RIPE RIS){suffix}; origin is AS215011 — your ASN is stripped on export"
+        ));
+        if any_invisible {
+            output::hint("not visible? new announcements take a few minutes to propagate — re-run shortly");
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn lookup(prefix: &str) -> anyhow::Result<()> {
+    let vis = ris::looking_glass(prefix).await?;
+
+    if !vis.is_visible() {
+        if output::is_json() {
+            println!("[]");
+        } else {
+            output::info(&format!("{prefix} is not visible in any RIPE RIS collector"));
+        }
+        return Ok(());
+    }
+
+    if !output::is_json() {
+        let origins = vis.origins();
+        let origin_str = if origins.is_empty() { "-".to_string() } else { origins.join(", ") };
+        let collectors = vis.collector_count().to_string();
+        let peers = vis.peer_count().to_string();
+        let propagation = ris::full_feed_peers()
+            .await
+            .ok()
+            .and_then(|ff| {
+                let total = ff.for_resource(prefix);
+                ris::propagation_pct(vis.peer_count(), total).map(|p| format!("{p}% of {total} full-feed RIS peers"))
+            });
+        output::section(&format!("looking glass: {prefix}"));
+        let mut pairs: Vec<(&str, &str)> = vec![
+            ("collectors", &collectors),
+            ("peers", &peers),
+            ("origin", &origin_str),
+        ];
+        if let Some(ref p) = propagation {
+            pairs.push(("propagation", p));
+        }
+        if let Some(ref t) = vis.query_time {
+            pairs.push(("as of", t));
+        }
+        output::kv(&pairs);
+        println!();
+    }
+
+    let paths = vis.paths();
+    // JSON is machine-consumed, so emit every path; the terminal table is capped.
+    let shown = if output::is_json() { paths.len() } else { paths.len().min(20) };
+    let rows: Vec<Vec<String>> = paths
+        .iter()
+        .take(shown)
+        .map(|p| {
+            vec![
+                p.origin.clone(),
+                p.as_path.clone(),
+                p.peers.to_string(),
+                p.collectors.to_string(),
+            ]
+        })
+        .collect();
+
+    output::table(&["origin", "as_path", "peers", "collectors"], &rows);
+
+    if !output::is_json() && paths.len() > shown {
+        output::info(&format!("\n… and {} more distinct paths", paths.len() - shown));
+    }
 
     Ok(())
 }
