@@ -27,13 +27,14 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 1
-          token: ${{ secrets.CLAUDE_GITHUB_PAT }}
 
+      # No github_token: review is comment-only, so it uses the official Claude
+      # GitHub App's built-in auth and posts as claude[bot]. The PAT is only kept
+      # in claude.yml (tag mode), where Claude's commits must trigger CI.
       - name: Run Claude Review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.CLAUDE_GITHUB_PAT }}
           track_progress: true
           prompt: |
             Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
