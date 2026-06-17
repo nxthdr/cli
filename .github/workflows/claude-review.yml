@@ -22,6 +22,10 @@ jobs:
       pull-requests: write
       issues: write
       actions: read
+      # Required for the official Claude App path (no PAT): the action mints its
+      # GitHub App installation token via an OIDC exchange. Without this the run
+      # fails with "Could not fetch an OIDC token".
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
