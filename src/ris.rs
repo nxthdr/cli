@@ -5,6 +5,15 @@ use serde::Deserialize;
 
 const DEFAULT_RIS_URL: &str = "https://stat.ripe.net";
 
+/// HTTP client with a timeout so a slow or unresponsive RIPEstat (a public
+/// external service) can't hang the CLI indefinitely.
+fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_default()
+}
+
 #[derive(Deserialize)]
 struct Envelope {
     data: LgData,
@@ -138,13 +147,40 @@ impl FullFeedPeers {
     }
 }
 
+#[derive(Deserialize)]
+struct PeerCountEnvelope {
+    data: PeerCountData,
+}
+
+#[derive(Deserialize)]
+struct PeerCountData {
+    peer_count: PeerCountFamilies,
+}
+
+#[derive(Deserialize)]
+struct PeerCountFamilies {
+    v4: FeedSeries,
+    v6: FeedSeries,
+}
+
+#[derive(Deserialize)]
+struct FeedSeries {
+    #[serde(default)]
+    full_feed: Vec<CountSample>,
+}
+
+#[derive(Deserialize)]
+struct CountSample {
+    count: u64,
+}
+
 /// Fetch the current count of full-feed RIS peers (v4 and v6) from RIPEstat's
 /// lightweight ris-peer-count endpoint.
 pub async fn full_feed_peers() -> Result<FullFeedPeers> {
     let base = std::env::var("NXTHDR_RIS_URL").unwrap_or_else(|_| DEFAULT_RIS_URL.to_string());
     let url = format!("{base}/data/ris-peer-count/data.json?sourceapp=nxthdr-cli");
 
-    let resp = reqwest::Client::new()
+    let resp = client()
         .get(&url)
         .header("User-Agent", "nxthdr-cli")
         .send()
@@ -155,19 +191,12 @@ pub async fn full_feed_peers() -> Result<FullFeedPeers> {
         anyhow::bail!("RIPEstat ris-peer-count failed with status {}", resp.status());
     }
 
-    let body: serde_json::Value = resp.json().await.context("Failed to parse RIPEstat response")?;
-    let pc = &body["data"]["peer_count"];
-    // full_feed is a time series; take the latest sample.
-    let latest = |fam: &str| -> u64 {
-        pc[fam]["full_feed"]
-            .as_array()
-            .and_then(|a| a.last())
-            .and_then(|s| s["count"].as_u64())
-            .unwrap_or(0)
-    };
+    let body: PeerCountEnvelope = resp.json().await.context("Failed to parse RIPEstat response")?;
+    // full_feed is a time series; take the latest sample for each family.
+    let latest = |series: &FeedSeries| series.full_feed.last().map(|s| s.count).unwrap_or(0);
     Ok(FullFeedPeers {
-        v4: latest("v4"),
-        v6: latest("v6"),
+        v4: latest(&body.data.peer_count.v4),
+        v6: latest(&body.data.peer_count.v6),
     })
 }
 
@@ -191,7 +220,7 @@ pub async fn looking_glass(resource: &str) -> Result<Visibility> {
 
     tracing::debug!("RIS looking-glass: {url}");
 
-    let resp = reqwest::Client::new()
+    let resp = client()
         .get(&url)
         .header("User-Agent", "nxthdr-cli")
         .send()

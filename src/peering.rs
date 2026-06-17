@@ -192,7 +192,7 @@ pub async fn routes() -> anyhow::Result<()> {
         let vis = ris::looking_glass(&lease.prefix).await?;
         let visible = vis.is_visible();
         any_invisible |= !visible;
-        as_of = vis.query_time.clone();
+        as_of = as_of.or_else(|| vis.query_time.clone());
         let origins = vis.origins();
         let propagation = full_feed
             .as_ref()
@@ -217,6 +217,7 @@ pub async fn routes() -> anyhow::Result<()> {
 
     if !output::is_json() {
         let suffix = as_of.map(|t| format!(" (as of {t})")).unwrap_or_default();
+        // AS215011 is PeerLab's export ASN; user (private) ASNs are stripped on export.
         output::info(&format!(
             "\nseen by public BGP collectors (RIPE RIS){suffix}; origin is AS215011 — your ASN is stripped on export"
         ));
