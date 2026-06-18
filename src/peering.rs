@@ -38,7 +38,7 @@ pub async fn prefix_list() -> anyhow::Result<()> {
     let user_info: UserInfo = api::ApiClient::new().get("/api/user/info").await?;
 
     if user_info.active_leases.is_empty() {
-        if output::is_json() { println!("[]"); } else {
+        if !output::empty(&["prefix", "expires", "rpki"]) {
             output::info("no active prefix leases");
             output::hint("nxthdr peering prefix request <hours>");
         }
@@ -175,9 +175,15 @@ pub async fn routes() -> anyhow::Result<()> {
     let user_info: UserInfo = api::ApiClient::new().get("/api/user/info").await?;
 
     if user_info.active_leases.is_empty() {
-        if output::is_json() {
-            println!("[]");
-        } else {
+        if !output::empty(&[
+            "prefix",
+            "visible",
+            "propagation",
+            "collectors",
+            "peers",
+            "origin",
+            "shortest path",
+        ]) {
             output::info("no active prefix leases — nothing to announce");
             output::hint("nxthdr peering prefix request <hours>");
         }
@@ -215,7 +221,7 @@ pub async fn routes() -> anyhow::Result<()> {
         &rows,
     );
 
-    if !output::is_json() {
+    if output::is_text() {
         let suffix = as_of.map(|t| format!(" (as of {t})")).unwrap_or_default();
         // AS215011 is PeerLab's export ASN; user (private) ASNs are stripped on export.
         output::info(&format!(
@@ -233,15 +239,13 @@ pub async fn lookup(prefix: &str) -> anyhow::Result<()> {
     let vis = ris::looking_glass(prefix).await?;
 
     if !vis.is_visible() {
-        if output::is_json() {
-            println!("[]");
-        } else {
+        if !output::empty(&["origin", "as_path", "peers", "collectors"]) {
             output::info(&format!("{prefix} is not visible in any RIPE RIS collector"));
         }
         return Ok(());
     }
 
-    if !output::is_json() {
+    if output::is_text() {
         let origins = vis.origins();
         let origin_str = if origins.is_empty() { "-".to_string() } else { origins.join(", ") };
         let collectors = vis.collector_count().to_string();
@@ -270,8 +274,8 @@ pub async fn lookup(prefix: &str) -> anyhow::Result<()> {
     }
 
     let paths = vis.paths();
-    // JSON is machine-consumed, so emit every path; the terminal table is capped.
-    let shown = if output::is_json() { paths.len() } else { paths.len().min(20) };
+    // Machine formats (JSON/CSV) emit every path; the terminal table is capped.
+    let shown = if output::is_text() { paths.len().min(20) } else { paths.len() };
     let rows: Vec<Vec<String>> = paths
         .iter()
         .take(shown)
@@ -287,7 +291,7 @@ pub async fn lookup(prefix: &str) -> anyhow::Result<()> {
 
     output::table(&["origin", "as_path", "peers", "collectors"], &rows);
 
-    if !output::is_json() && paths.len() > shown {
+    if output::is_text() && paths.len() > shown {
         output::info(&format!("\n… and {} more distinct paths", paths.len() - shown));
     }
 
