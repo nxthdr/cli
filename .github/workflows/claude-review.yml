@@ -31,6 +31,11 @@ jobs:
 
       - name: Run Claude Review
         uses: anthropics/claude-code-action@v1
+        # The review is advisory: it posts findings but must never block a PR.
+        # claude-code-action exits non-zero when it hits --max-turns, so without
+        # this the job goes red even though the review ran. Keep CI green and let
+        # the posted review speak for itself.
+        continue-on-error: true
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.CLAUDE_GITHUB_PAT }}
@@ -41,4 +46,4 @@ jobs:
             conventions. Report important findings only; skip nits. Use inline
             comments on the relevant lines where it helps.
           claude_args: |
-            --max-turns 5
+            --max-turns 20
