@@ -269,6 +269,8 @@ async fn query_clickhouse(sql: &str) -> anyhow::Result<Vec<serde_json::Value>> {
 }
 
 pub async fn measurements(limit: u32) -> anyhow::Result<()> {
+    anyhow::ensure!((1..=100).contains(&limit), "--limit must be between 1 and 100");
+
     #[derive(Deserialize)]
     struct Measurement {
         measurement_id: String,
@@ -333,14 +335,19 @@ pub async fn measurement_status(id: &str) -> anyhow::Result<()> {
         .get(&format!("/api/measurement/{id}/status"))
         .await?;
 
-    let overall = if status.measurement_complete { "complete" } else { "in progress" };
-    output::section("measurement");
-    output::kv(&[
-        ("id", &status.measurement_id),
-        ("status", overall),
-        ("agents", &format!("{}/{} complete", status.completed_agents, status.total_agents)),
-        ("probes", &format!("{}/{} sent", status.total_sent_probes, status.total_expected_probes)),
-    ]);
+    // Text mode shows the rich summary block; machine formats (json/csv) emit
+    // only the per-agent table below, so the output stays a single valid block
+    // (one CSV header / one JSON value) instead of a summary followed by a table.
+    if output::is_text() {
+        let overall = if status.measurement_complete { "complete" } else { "in progress" };
+        output::section("measurement");
+        output::kv(&[
+            ("id", &status.measurement_id),
+            ("status", overall),
+            ("agents", &format!("{}/{} complete", status.completed_agents, status.total_agents)),
+            ("probes", &format!("{}/{} sent", status.total_sent_probes, status.total_expected_probes)),
+        ]);
+    }
 
     if !status.agents.is_empty() {
         let rows: Vec<Vec<String>> = status.agents.iter().map(|a| {
