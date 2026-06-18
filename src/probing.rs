@@ -283,7 +283,7 @@ pub async fn measurements(limit: u32) -> anyhow::Result<()> {
     }
 
     let measurements: Vec<Measurement> = api::ApiClient::new_saimiris()
-        .get(&format!("/api/user/measurements?limit={limit}"))
+        .get(&format!("/api/measurements?limit={limit}"))
         .await?;
 
     if measurements.is_empty() {
