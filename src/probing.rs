@@ -375,7 +375,7 @@ pub async fn measurement_status(id: &str) -> anyhow::Result<()> {
                 done.to_string(),
             ]
         }).collect();
-        output::table(&["agent", "probes sent/expected", "complete"], &rows);
+        output::table(&["agent", "probes sent/expected", "status"], &rows);
     }
 
     Ok(())
@@ -402,6 +402,7 @@ pub async fn cancel(id: &str) -> anyhow::Result<()> {
         ("id", id),
         ("cancelled", &resp.cancelled.to_string()),
         ("agents_cancelled", &resp.agents_cancelled.to_string()),
+        ("message", &resp.message),
     ]);
     output::hint(&format!("nxthdr probing measurement-status {id}"));
 
