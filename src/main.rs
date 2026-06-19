@@ -71,6 +71,11 @@ enum ProbingCommands {
         #[arg(long, help = "Override source IPv6 address (auto-detected per agent if not set)")]
         src_ip: Option<String>,
     },
+    #[command(about = "List your recent measurements")]
+    Measurements {
+        #[arg(long, default_value_t = 20, help = "Maximum number of measurements to list (1-100)")]
+        limit: u32,
+    },
     #[command(about = "Get status of a measurement by ID")]
     MeasurementStatus {
         #[arg(help = "Measurement ID returned by 'send'")]
@@ -170,6 +175,7 @@ async fn handle_probing(command: ProbingCommands) -> anyhow::Result<()> {
         ProbingCommands::Agents => probing::agents().await,
         ProbingCommands::Send { file, agent, src_ip } => probing::send(file, agent, src_ip).await,
         ProbingCommands::Results { src_ip, since, until } => probing::results(src_ip, since, until).await,
+        ProbingCommands::Measurements { limit } => probing::measurements(limit).await,
         ProbingCommands::MeasurementStatus { id } => probing::measurement_status(&id).await,
     }
 }

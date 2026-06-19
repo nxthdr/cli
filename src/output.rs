@@ -6,6 +6,8 @@ pub enum OutputFormat {
     Text,
     #[value(name = "json")]
     Json,
+    #[value(name = "csv")]
+    Csv,
 }
 
 thread_local! {
@@ -16,12 +18,45 @@ pub fn set_format(fmt: OutputFormat) {
     FORMAT.with(|f| f.set(fmt));
 }
 
-pub fn is_json() -> bool {
-    FORMAT.with(|f| f.get()) == OutputFormat::Json
+/// True only in text mode — use to gate human-facing decoration (notes, hints,
+/// truncation) that must not pollute machine-readable JSON/CSV output.
+pub fn is_text() -> bool {
+    FORMAT.with(|f| f.get()) == OutputFormat::Text
 }
 
 fn fmt() -> OutputFormat {
     FORMAT.with(|f| f.get())
+}
+
+/// Escape a single CSV field per RFC 4180: quote it when it contains a comma,
+/// quote, or newline, doubling any embedded quotes.
+fn csv_field(s: &str) -> String {
+    if s.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+fn csv_line(cells: &[&str]) -> String {
+    cells.iter().map(|c| csv_field(c)).collect::<Vec<_>>().join(",")
+}
+
+/// Render an empty result set for the active format. In text mode it does
+/// nothing and returns `false` so the caller can print a friendly note; in
+/// JSON it prints `[]` and in CSV the header row, returning `true`.
+pub fn empty(headers: &[&str]) -> bool {
+    match fmt() {
+        OutputFormat::Text => false,
+        OutputFormat::Json => {
+            println!("[]");
+            true
+        }
+        OutputFormat::Csv => {
+            println!("{}", csv_line(headers));
+            true
+        }
+    }
 }
 
 /// Print a section heading with a separator (text mode only).
@@ -83,6 +118,14 @@ pub fn kv(pairs: &[(&str, &str)]) {
                 serde_json::to_string_pretty(&serde_json::Value::Object(obj)).unwrap()
             );
         }
+        OutputFormat::Csv => {
+            // A key/value block becomes a single-row CSV: keys as the header,
+            // values as the one data row.
+            let keys: Vec<&str> = pairs.iter().map(|(k, _)| *k).collect();
+            let vals: Vec<&str> = pairs.iter().map(|(_, v)| *v).collect();
+            println!("{}", csv_line(&keys));
+            println!("{}", csv_line(&vals));
+        }
     }
 }
 
@@ -135,5 +178,39 @@ pub fn table(headers: &[&str], rows: &[Vec<String>]) -> usize {
             );
             0
         }
+        OutputFormat::Csv => {
+            println!("{}", csv_line(headers));
+            for row in rows {
+                let cells: Vec<&str> = row.iter().map(|s| s.as_str()).collect();
+                println!("{}", csv_line(&cells));
+            }
+            0
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{csv_field, csv_line};
+
+    #[test]
+    fn csv_field_leaves_plain_values_unquoted() {
+        assert_eq!(csv_field("vltcdg01"), "vltcdg01");
+        assert_eq!(csv_field("2001:db8::/48"), "2001:db8::/48");
+    }
+
+    #[test]
+    fn csv_field_quotes_and_escapes_special_chars() {
+        // Comma forces quoting.
+        assert_eq!(csv_field("a,b"), "\"a,b\"");
+        // Embedded quotes are doubled and the field is wrapped.
+        assert_eq!(csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+        // Newlines force quoting.
+        assert_eq!(csv_field("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn csv_line_joins_escaped_fields() {
+        assert_eq!(csv_line(&["a", "b,c", "d"]), "a,\"b,c\",d");
     }
 }

@@ -49,7 +49,9 @@ pub async fn agents() -> anyhow::Result<()> {
     let agents: Vec<Agent> = api::ApiClient::new_saimiris().get_public("/api/agents").await?;
 
     if agents.is_empty() {
-        if output::is_json() { println!("[]"); } else { output::info("no agents available"); }
+        if !output::empty(&["id", "status", "prefixes"]) {
+            output::info("no agents available");
+        }
         return Ok(());
     }
 
@@ -226,7 +228,9 @@ pub async fn results(
     let rows = query_clickhouse(&sql).await?;
 
     if rows.is_empty() {
-        if output::is_json() { println!("[]"); } else { output::info(&format!("no replies found for {}", src_ips.join(", "))); }
+        if !output::empty(&["agent", "src", "dst", "ttl", "reply", "rtt"]) {
+            output::info(&format!("no replies found for {}", src_ips.join(", ")));
+        }
         return Ok(());
     }
 
@@ -264,6 +268,49 @@ async fn query_clickhouse(sql: &str) -> anyhow::Result<Vec<serde_json::Value>> {
         .collect()
 }
 
+pub async fn measurements(limit: u32) -> anyhow::Result<()> {
+    anyhow::ensure!((1..=100).contains(&limit), "--limit must be between 1 and 100");
+
+    #[derive(Deserialize)]
+    struct Measurement {
+        measurement_id: String,
+        total_agents: i64,
+        completed_agents: i64,
+        total_expected_probes: i64,
+        total_sent_probes: i64,
+        measurement_complete: bool,
+        started_at: String,
+    }
+
+    let measurements: Vec<Measurement> = api::ApiClient::new_saimiris()
+        .get(&format!("/api/measurements?limit={limit}"))
+        .await?;
+
+    if measurements.is_empty() {
+        if !output::empty(&["id", "started", "agents", "probes", "status"]) {
+            output::info("no measurements found");
+            output::hint("nxthdr probing send --agent <id> probes.csv");
+        }
+        return Ok(());
+    }
+
+    let rows: Vec<Vec<String>> = measurements.iter().map(|m| {
+        let status = if m.measurement_complete { "complete" } else { "in progress" };
+        vec![
+            m.measurement_id.clone(),
+            m.started_at.clone(),
+            format!("{}/{}", m.completed_agents, m.total_agents),
+            format!("{}/{}", m.total_sent_probes, m.total_expected_probes),
+            status.to_string(),
+        ]
+    }).collect();
+
+    output::table(&["id", "started", "agents", "probes", "status"], &rows);
+    output::hint("nxthdr probing measurement-status <id>");
+
+    Ok(())
+}
+
 pub async fn measurement_status(id: &str) -> anyhow::Result<()> {
     #[derive(serde::Deserialize)]
     struct AgentStatus {
@@ -288,14 +335,19 @@ pub async fn measurement_status(id: &str) -> anyhow::Result<()> {
         .get(&format!("/api/measurement/{id}/status"))
         .await?;
 
-    let overall = if status.measurement_complete { "complete" } else { "in progress" };
-    output::section("measurement");
-    output::kv(&[
-        ("id", &status.measurement_id),
-        ("status", overall),
-        ("agents", &format!("{}/{} complete", status.completed_agents, status.total_agents)),
-        ("probes", &format!("{}/{} sent", status.total_sent_probes, status.total_expected_probes)),
-    ]);
+    // Text mode shows the rich summary block; machine formats (json/csv) emit
+    // only the per-agent table below, so the output stays a single valid block
+    // (one CSV header / one JSON value) instead of a summary followed by a table.
+    if output::is_text() {
+        let overall = if status.measurement_complete { "complete" } else { "in progress" };
+        output::section("measurement");
+        output::kv(&[
+            ("id", &status.measurement_id),
+            ("status", overall),
+            ("agents", &format!("{}/{} complete", status.completed_agents, status.total_agents)),
+            ("probes", &format!("{}/{} sent", status.total_sent_probes, status.total_expected_probes)),
+        ]);
+    }
 
     if !status.agents.is_empty() {
         let rows: Vec<Vec<String>> = status.agents.iter().map(|a| {
