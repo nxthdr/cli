@@ -81,6 +81,11 @@ enum ProbingCommands {
         #[arg(help = "Measurement ID returned by 'send'")]
         id: String,
     },
+    #[command(about = "Cancel a stuck/in-progress measurement by ID")]
+    Cancel {
+        #[arg(help = "Measurement ID to cancel")]
+        id: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -177,6 +182,7 @@ async fn handle_probing(command: ProbingCommands) -> anyhow::Result<()> {
         ProbingCommands::Results { src_ip, since, until } => probing::results(src_ip, since, until).await,
         ProbingCommands::Measurements { limit } => probing::measurements(limit).await,
         ProbingCommands::MeasurementStatus { id } => probing::measurement_status(&id).await,
+        ProbingCommands::Cancel { id } => probing::cancel(&id).await,
     }
 }
 
