@@ -28,7 +28,7 @@ All service endpoints fall back to production but can be overridden via env vars
 
 ## Releasing
 
-Publishing to crates.io is **git-tag-driven**: the `publish` job in `cicd.yml` runs `cargo publish` only on a `refs/tags/` push (after `tests` pass). To cut a release:
+Publishing to crates.io is **git-tag-driven**: the `publish` job in `cicd.yml` runs `cargo publish` only on a `refs/tags/` push (after `tests` pass). Auth is **crates.io Trusted Publishing (OIDC)** — `rust-lang/crates-io-auth-action` mints a short-lived token at run time (auto-revoked when the job ends), so there is **no `CARGO_REGISTRY_TOKEN` secret**. The trust is configured on crates.io (crate Settings → Trusted Publishing → GitHub: owner `nxthdr`, repo `cli`, workflow `cicd.yml`, no environment); the job needs `id-token: write`. To cut a release:
 
 1. Bump `version` in `Cargo.toml` (semver — breaking command changes warrant a minor bump pre-1.0). Commit as `chore: Release nxthdr version X.Y.Z` and land it on `main`.
 2. Tag that commit and push the tag (tags are not ruleset-protected, so this is a direct push):
@@ -37,7 +37,7 @@ Publishing to crates.io is **git-tag-driven**: the `publish` job in `cicd.yml` r
    ```
 3. The tag push publishes `nxthdr` X.Y.Z to crates.io and pushes docker images tagged `X.Y.Z` / `X.Y`.
 
-Gotchas: the `Cargo.toml` version must equal the tag **and** be a not-yet-published version — `cargo publish` hard-fails on a duplicate, and CI does **not** cross-check tag vs. version, so the bump must land *before* tagging. `Cargo.lock` is gitignored (nothing to bump).
+Gotchas: the `Cargo.toml` version must be a not-yet-published version — `cargo publish` hard-fails on a duplicate. The `publish` job now **verifies the tag matches `Cargo.toml`** (stripping the leading `v`) and fails fast on a mismatch, so the version bump must land on `main` *before* you tag. `Cargo.lock` is gitignored (nothing to bump).
 
 ## Architecture
 
