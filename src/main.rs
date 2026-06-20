@@ -46,13 +46,36 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum ProbingCommands {
-    #[command(about = "List available probing agents")]
-    Agents,
+    #[command(about = "Manage probing agents")]
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommands,
+    },
     #[command(about = "Show your probing credits usage")]
     Credits,
+    #[command(about = "Send, list, and manage measurements")]
+    Measurement {
+        #[command(subcommand)]
+        command: MeasurementCommands,
+    },
+    #[command(about = "Query probe replies")]
+    Reply {
+        #[command(subcommand)]
+        command: ReplyCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentCommands {
+    #[command(about = "List available probing agents")]
+    List,
+}
+
+#[derive(Subcommand)]
+enum MeasurementCommands {
     #[command(
         about = "Send probes from one or more agents",
-        long_about = "Send probes read from a file or stdin.\n\nEach line must be: dst_addr,src_port,dst_port,ttl,protocol\nProtocol is 'icmpv6' or 'udp' (case-insensitive).\n\nExamples:\n  nxthdr probing send --agent vltcdg01 probes.csv\n  prowl | nxthdr probing send --agent vltcdg01"
+        long_about = "Send probes read from a file or stdin.\n\nEach line must be: dst_addr,src_port,dst_port,ttl,protocol\nProtocol is 'icmpv6' or 'udp' (case-insensitive).\n\nExamples:\n  nxthdr probing measurement send --agent vltcdg01 probes.csv\n  prowl | nxthdr probing measurement send --agent vltcdg01"
     )]
     Send {
         #[arg(help = "Input file with probes (reads from stdin if omitted)")]
@@ -63,7 +86,7 @@ enum ProbingCommands {
         src_ip: Option<String>,
     },
     #[command(about = "List your recent measurements")]
-    Measurements {
+    List {
         #[arg(long, default_value_t = 20, help = "Maximum number of measurements to list (1-100)")]
         limit: u32,
         #[arg(long, value_delimiter = ',', help = "Filter by status (comma-separated): complete, in-progress, cancelled")]
@@ -79,26 +102,8 @@ enum ProbingCommands {
         #[arg(long, help = "Reverse the order (oldest first)")]
         reverse: bool,
     },
-    #[command(about = "Inspect or cancel a single measurement")]
-    Measurement {
-        #[command(subcommand)]
-        command: MeasurementCommands,
-    },
-    #[command(about = "Query replies from ClickHouse")]
-    Results {
-        #[arg(long, help = "Source IP(s) to filter by", required = true, num_args = 1..)]
-        src_ip: Vec<String>,
-        #[arg(long, help = "Start of time window (e.g. '2026-03-19 21:00:00')")]
-        since: Option<String>,
-        #[arg(long, help = "End of time window (e.g. '2026-03-19 22:00:00')")]
-        until: Option<String>,
-    },
-}
-
-#[derive(Subcommand)]
-enum MeasurementCommands {
     #[command(about = "Get status of a measurement by ID")]
-    Status {
+    Get {
         #[arg(help = "Measurement ID returned by 'send'")]
         id: String,
     },
@@ -110,26 +115,46 @@ enum MeasurementCommands {
 }
 
 #[derive(Subcommand)]
+enum ReplyCommands {
+    #[command(about = "Query replies from ClickHouse")]
+    List {
+        #[arg(long, help = "Source IP(s) to filter by", required = true, num_args = 1..)]
+        src_ip: Vec<String>,
+        #[arg(long, help = "Start of time window (e.g. '2026-03-19 21:00:00')")]
+        since: Option<String>,
+        #[arg(long, help = "End of time window (e.g. '2026-03-19 22:00:00')")]
+        until: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum PeeringCommands {
-    #[command(about = "Get your ASN")]
-    Asn,
+    #[command(about = "Manage your ASN")]
+    Asn {
+        #[command(subcommand)]
+        command: AsnCommands,
+    },
     #[command(about = "Manage prefix leases")]
     Prefix {
         #[command(subcommand)]
         command: PrefixCommands,
+    },
+    #[command(about = "Looking glass: how a prefix is seen by public BGP collectors (RIPE RIS)")]
+    Lookup {
+        #[arg(help = "Prefix or IP to look up (e.g., 2001:db8::/48)")]
+        prefix: String,
     },
     #[command(about = "PeerLab utilities")]
     Peerlab {
         #[command(subcommand)]
         command: PeerlabCommands,
     },
-    #[command(about = "Show your leased prefixes as seen by public BGP collectors (RIPE RIS)")]
-    Routes,
-    #[command(about = "Looking glass: how a prefix is seen by public BGP collectors (RIPE RIS)")]
-    Lookup {
-        #[arg(help = "Prefix or IP to look up (e.g., 2001:db8::/48)")]
-        prefix: String,
-    },
+}
+
+#[derive(Subcommand)]
+enum AsnCommands {
+    #[command(about = "Get your ASN")]
+    Get,
 }
 
 #[derive(Subcommand)]
@@ -152,6 +177,8 @@ enum PrefixCommands {
         #[arg(help = "Prefix to revoke (e.g., 2001:db8::/48)")]
         prefix: String,
     },
+    #[command(about = "Show your leased prefixes as seen by public BGP collectors (RIPE RIS)")]
+    Routes,
     #[command(about = "Manage RPKI ROA for a leased prefix")]
     Rpki {
         #[command(subcommand)]
@@ -197,37 +224,47 @@ async fn main() -> anyhow::Result<()> {
 
 async fn handle_probing(command: ProbingCommands) -> anyhow::Result<()> {
     match command {
+        ProbingCommands::Agent { command } => match command {
+            AgentCommands::List => probing::agents().await,
+        },
         ProbingCommands::Credits => probing::credits().await,
-        ProbingCommands::Agents => probing::agents().await,
-        ProbingCommands::Send { file, agent, src_ip } => probing::send(file, agent, src_ip).await,
-        ProbingCommands::Results { src_ip, since, until } => probing::results(src_ip, since, until).await,
-        ProbingCommands::Measurements { limit, status, since, until, agent, sort, reverse } => {
-            probing::measurements(limit, status, since, until, agent, sort, reverse).await
-        }
         ProbingCommands::Measurement { command } => match command {
-            MeasurementCommands::Status { id } => probing::measurement_status(&id).await,
+            MeasurementCommands::Send { file, agent, src_ip } => {
+                probing::send(file, agent, src_ip).await
+            }
+            MeasurementCommands::List { limit, status, since, until, agent, sort, reverse } => {
+                probing::measurements(limit, status, since, until, agent, sort, reverse).await
+            }
+            MeasurementCommands::Get { id } => probing::measurement_status(&id).await,
             MeasurementCommands::Cancel { id } => probing::cancel(&id).await,
+        },
+        ProbingCommands::Reply { command } => match command {
+            ReplyCommands::List { src_ip, since, until } => {
+                probing::results(src_ip, since, until).await
+            }
         },
     }
 }
 
 async fn handle_peering(command: PeeringCommands) -> anyhow::Result<()> {
     match command {
-        PeeringCommands::Asn => peering::asn().await,
+        PeeringCommands::Asn { command } => match command {
+            AsnCommands::Get => peering::asn().await,
+        },
         PeeringCommands::Prefix { command } => match command {
             PrefixCommands::List => peering::prefix_list().await,
             PrefixCommands::Request { duration } => peering::prefix_request(duration).await,
             PrefixCommands::Revoke { prefix } => peering::prefix_revoke(&prefix).await,
+            PrefixCommands::Routes => peering::routes().await,
             PrefixCommands::Rpki { command } => match command {
                 RpkiCommands::Enable { prefix } => peering::prefix_rpki(&prefix, true).await,
                 RpkiCommands::Disable { prefix } => peering::prefix_rpki(&prefix, false).await,
             },
         },
+        PeeringCommands::Lookup { prefix } => peering::lookup(&prefix).await,
         PeeringCommands::Peerlab { command } => match command {
             PeerlabCommands::Env => peering::peerlab_env().await,
         },
-        PeeringCommands::Routes => peering::routes().await,
-        PeeringCommands::Lookup { prefix } => peering::lookup(&prefix).await,
     }
 }
 

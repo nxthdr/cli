@@ -167,7 +167,7 @@ pub async fn send(
             let agent_entry = user_prefixes.agents.iter()
                 .find(|a| &a.agent_id == agent_id)
                 .ok_or_else(|| anyhow::anyhow!(
-                    "No prefix allocated for agent '{agent_id}'. Run 'nxthdr probing agents' to see available agents."
+                    "No prefix allocated for agent '{agent_id}'. Run 'nxthdr probing agent list' to see available agents."
                 ))?;
             let user_prefix = &agent_entry.prefixes.first()
                 .ok_or_else(|| anyhow::anyhow!("Agent '{agent_id}' has no configured prefix"))?
@@ -199,8 +199,8 @@ pub async fn send(
     output::kv(&pairs);
 
     let hint = agent_src.iter().map(|(_, ip)| format!("--src-ip {ip}")).collect::<Vec<_>>().join(" ");
-    output::hint(&format!("nxthdr probing measurement status {}", response.id));
-    output::hint(&format!("nxthdr probing results {hint}"));
+    output::hint(&format!("nxthdr probing measurement get {}", response.id));
+    output::hint(&format!("nxthdr probing reply list {hint}"));
 
     Ok(())
 }
@@ -365,7 +365,7 @@ pub async fn measurements(
     if measurements.is_empty() {
         if !output::empty(&["id", "started", "agents", "probes", "status"]) {
             output::info("no measurements found");
-            output::hint("nxthdr probing send --agent <id> probes.csv");
+            output::hint("nxthdr probing measurement send --agent <id> probes.csv");
         }
         return Ok(());
     }
@@ -382,7 +382,7 @@ pub async fn measurements(
     }).collect();
 
     output::table(&["id", "started", "agents", "probes", "status"], &rows);
-    output::hint("nxthdr probing measurement status <id>");
+    output::hint("nxthdr probing measurement get <id>");
 
     Ok(())
 }
@@ -467,7 +467,7 @@ pub async fn cancel(id: &str) -> anyhow::Result<()> {
         ("agents_cancelled", &resp.agents_cancelled.to_string()),
         ("message", &resp.message),
     ]);
-    output::hint(&format!("nxthdr probing measurement status {id}"));
+    output::hint(&format!("nxthdr probing measurement get {id}"));
 
     Ok(())
 }
