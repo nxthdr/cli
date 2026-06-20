@@ -46,19 +46,10 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum ProbingCommands {
-    #[command(about = "Show your probing credits usage")]
-    Credits,
     #[command(about = "List available probing agents")]
     Agents,
-    #[command(about = "Query replies from ClickHouse")]
-    Results {
-        #[arg(long, help = "Source IP(s) to filter by", required = true, num_args = 1..)]
-        src_ip: Vec<String>,
-        #[arg(long, help = "Start of time window (e.g. '2026-03-19 21:00:00')")]
-        since: Option<String>,
-        #[arg(long, help = "End of time window (e.g. '2026-03-19 22:00:00')")]
-        until: Option<String>,
-    },
+    #[command(about = "Show your probing credits usage")]
+    Credits,
     #[command(
         about = "Send probes from one or more agents",
         long_about = "Send probes read from a file or stdin.\n\nEach line must be: dst_addr,src_port,dst_port,ttl,protocol\nProtocol is 'icmpv6' or 'udp' (case-insensitive).\n\nExamples:\n  nxthdr probing send --agent vltcdg01 probes.csv\n  prowl | nxthdr probing send --agent vltcdg01"
@@ -88,8 +79,26 @@ enum ProbingCommands {
         #[arg(long, help = "Reverse the order (oldest first)")]
         reverse: bool,
     },
+    #[command(about = "Inspect or cancel a single measurement")]
+    Measurement {
+        #[command(subcommand)]
+        command: MeasurementCommands,
+    },
+    #[command(about = "Query replies from ClickHouse")]
+    Results {
+        #[arg(long, help = "Source IP(s) to filter by", required = true, num_args = 1..)]
+        src_ip: Vec<String>,
+        #[arg(long, help = "Start of time window (e.g. '2026-03-19 21:00:00')")]
+        since: Option<String>,
+        #[arg(long, help = "End of time window (e.g. '2026-03-19 22:00:00')")]
+        until: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum MeasurementCommands {
     #[command(about = "Get status of a measurement by ID")]
-    MeasurementStatus {
+    Status {
         #[arg(help = "Measurement ID returned by 'send'")]
         id: String,
     },
@@ -195,8 +204,10 @@ async fn handle_probing(command: ProbingCommands) -> anyhow::Result<()> {
         ProbingCommands::Measurements { limit, status, since, until, agent, sort, reverse } => {
             probing::measurements(limit, status, since, until, agent, sort, reverse).await
         }
-        ProbingCommands::MeasurementStatus { id } => probing::measurement_status(&id).await,
-        ProbingCommands::Cancel { id } => probing::cancel(&id).await,
+        ProbingCommands::Measurement { command } => match command {
+            MeasurementCommands::Status { id } => probing::measurement_status(&id).await,
+            MeasurementCommands::Cancel { id } => probing::cancel(&id).await,
+        },
     }
 }
 
