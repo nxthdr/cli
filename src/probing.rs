@@ -279,8 +279,7 @@ fn measurement_label(cancelled: bool, complete: bool) -> &'static str {
     }
 }
 
-/// Status filter for `measurements` (clap derives kebab-case value names:
-/// `complete`, `in-progress`, `cancelled`).
+/// Status filter; clap derives kebab-case names: complete, in-progress, cancelled.
 #[derive(Clone, Copy, clap::ValueEnum)]
 pub enum StatusFilter {
     Complete,
@@ -298,7 +297,6 @@ impl StatusFilter {
     }
 }
 
-/// Sort field for `measurements`.
 #[derive(Clone, Copy, clap::ValueEnum)]
 pub enum SortField {
     Started,
@@ -341,8 +339,10 @@ pub async fn measurements(
     // Filters are applied server-side, before the limit.
     let mut query: Vec<String> = vec![format!("limit={limit}")];
     if !status.is_empty() {
+        // enum values are ASCII-safe; keep the comma literal so the gateway, which
+        // splits on ',' after URL-decoding, sees the separator.
         let joined = status.iter().map(|s| s.as_query()).collect::<Vec<_>>().join(",");
-        query.push(format!("status={}", urlencoding::encode(&joined)));
+        query.push(format!("status={joined}"));
     }
     if let Some(ref s) = since {
         query.push(format!("since={}", urlencoding::encode(s)));
