@@ -6,12 +6,13 @@ mod peering;
 mod probing;
 mod ris;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Parser)]
 #[command(name = "nxthdr")]
+#[command(version)]
 #[command(about = "CLI tool to interact with nxthdr platform", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -20,7 +21,14 @@ struct Cli {
     #[command(flatten)]
     verbose: Verbosity<InfoLevel>,
 
-    #[arg(long, short = 'o', global = true, value_enum, default_value = "text", help = "Output format")]
+    #[arg(
+        long,
+        short = 'o',
+        global = true,
+        value_enum,
+        default_value = "text",
+        help = "Output format"
+    )]
     output: output::OutputFormat,
 }
 
@@ -40,6 +48,11 @@ enum Commands {
     Probing {
         #[command(subcommand)]
         command: ProbingCommands,
+    },
+    #[command(about = "Generate shell completion scripts")]
+    Completions {
+        #[arg(value_enum, help = "Shell to generate completions for")]
+        shell: clap_complete::Shell,
     },
 }
 
@@ -100,22 +113,41 @@ enum MeasurementCommands {
         file: Option<std::path::PathBuf>,
         #[arg(short, long, help = "Agent ID(s) to use", required = true)]
         agent: Vec<String>,
-        #[arg(long, help = "Override source IPv6 address (auto-detected per agent if not set)")]
+        #[arg(
+            long,
+            help = "Override source IPv6 address (auto-detected per agent if not set)"
+        )]
         src_ip: Option<String>,
     },
     #[command(about = "List your recent measurements")]
     List {
-        #[arg(long, default_value_t = 20, help = "Maximum number of measurements to list (1-100)")]
+        #[arg(
+            long,
+            default_value_t = 20,
+            help = "Maximum number of measurements to list (1-100)"
+        )]
         limit: u32,
-        #[arg(long, value_delimiter = ',', help = "Filter by status (comma-separated): complete, in-progress, cancelled")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Filter by status (comma-separated): complete, in-progress, cancelled"
+        )]
         status: Vec<probing::StatusFilter>,
-        #[arg(long, help = "Only measurements started at/after this time (e.g. '2026-03-22' or '2026-03-22 10:00:00')")]
+        #[arg(
+            long,
+            help = "Only measurements started at/after this time (e.g. '2026-03-22' or '2026-03-22 10:00:00')"
+        )]
         since: Option<String>,
         #[arg(long, help = "Only measurements started at/before this time")]
         until: Option<String>,
         #[arg(long, help = "Only measurements involving this agent ID")]
         agent: Option<String>,
-        #[arg(long, value_enum, default_value = "updated", help = "Sort by 'started' or 'updated' time")]
+        #[arg(
+            long,
+            value_enum,
+            default_value = "updated",
+            help = "Sort by 'started' or 'updated' time"
+        )]
         sort: probing::SortField,
         #[arg(long, help = "Reverse the order (oldest first)")]
         reverse: bool,
@@ -228,7 +260,10 @@ enum RpkiCommands {
 }
 
 fn now_secs() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
 }
 
 #[tokio::main]
@@ -246,6 +281,11 @@ async fn main() -> anyhow::Result<()> {
         },
         Commands::Peering { command } => handle_peering(command).await?,
         Commands::Probing { command } => handle_probing(command).await?,
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let bin = cmd.get_name().to_string();
+            clap_complete::generate(shell, &mut cmd, bin, &mut std::io::stdout());
+        }
     }
 
     Ok(())
@@ -260,19 +300,29 @@ async fn handle_probing(command: ProbingCommands) -> anyhow::Result<()> {
             CreditsCommands::Get => probing::credits().await,
         },
         ProbingCommands::Measurement { command } => match command {
-            MeasurementCommands::Send { file, agent, src_ip } => {
-                probing::send(file, agent, src_ip).await
-            }
-            MeasurementCommands::List { limit, status, since, until, agent, sort, reverse } => {
-                probing::measurements(limit, status, since, until, agent, sort, reverse).await
-            }
+            MeasurementCommands::Send {
+                file,
+                agent,
+                src_ip,
+            } => probing::send(file, agent, src_ip).await,
+            MeasurementCommands::List {
+                limit,
+                status,
+                since,
+                until,
+                agent,
+                sort,
+                reverse,
+            } => probing::measurements(limit, status, since, until, agent, sort, reverse).await,
             MeasurementCommands::Get { id } => probing::measurement_status(&id).await,
             MeasurementCommands::Cancel { id } => probing::cancel(&id).await,
         },
         ProbingCommands::Reply { command } => match command {
-            ReplyCommands::List { src_ip, since, until } => {
-                probing::results(src_ip, since, until).await
-            }
+            ReplyCommands::List {
+                src_ip,
+                since,
+                until,
+            } => probing::results(src_ip, since, until).await,
         },
     }
 }
@@ -316,10 +366,19 @@ async fn handle_login() -> anyhow::Result<()> {
         }
 
         output::info("refreshing token...");
-        let (access_token, refresh_token, expires_at) = auth::refresh_access_token(&tokens.refresh_token)
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to refresh token: {e} — run 'nxthdr auth logout' then 'nxthdr auth login'"))?;
-        config::save_tokens(&config::TokenStorage { access_token, refresh_token, expires_at })?;
+        let (access_token, refresh_token, expires_at) =
+            auth::refresh_access_token(&tokens.refresh_token)
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                "failed to refresh token: {e} — run 'nxthdr auth logout' then 'nxthdr auth login'"
+            )
+                })?;
+        config::save_tokens(&config::TokenStorage {
+            access_token,
+            refresh_token,
+            expires_at,
+        })?;
         output::success("token refreshed");
         return Ok(());
     }
@@ -328,13 +387,20 @@ async fn handle_login() -> anyhow::Result<()> {
 
     output::info("open the following URL to authenticate:");
     output::info(&format!("\n  {}\n", device_code.verification_uri_complete));
-    output::info(&format!("or go to {} and enter code: {}\n", device_code.verification_uri, device_code.user_code));
+    output::info(&format!(
+        "or go to {} and enter code: {}\n",
+        device_code.verification_uri, device_code.user_code
+    ));
     output::info("waiting...");
 
     let (access_token, refresh_token, expires_at) =
         auth::poll_for_token(&device_code.device_code, device_code.interval).await?;
 
-    config::save_tokens(&config::TokenStorage { access_token, refresh_token, expires_at })?;
+    config::save_tokens(&config::TokenStorage {
+        access_token,
+        refresh_token,
+        expires_at,
+    })?;
     output::success("authenticated");
 
     Ok(())
