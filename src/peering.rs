@@ -45,12 +45,20 @@ pub async fn prefix_list() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let rows: Vec<Vec<String>> = user_info.active_leases.iter()
-        .map(|l| vec![
-            l.prefix.clone(),
-            l.end_time.clone(),
-            if l.rpki_enabled { "enabled".to_string() } else { "disabled".to_string() },
-        ])
+    let rows: Vec<Vec<String>> = user_info
+        .active_leases
+        .iter()
+        .map(|l| {
+            vec![
+                l.prefix.clone(),
+                l.end_time.clone(),
+                if l.rpki_enabled {
+                    "enabled".to_string()
+                } else {
+                    "disabled".to_string()
+                },
+            ]
+        })
         .collect();
     output::table(&["prefix", "expires", "rpki"], &rows);
 
@@ -71,11 +79,19 @@ pub async fn prefix_request(duration: u32) -> anyhow::Result<()> {
     }
 
     let response: PrefixResponse = api::ApiClient::new()
-        .post("/api/user/prefix", &PrefixRequest { duration_hours: duration })
+        .post(
+            "/api/user/prefix",
+            &PrefixRequest {
+                duration_hours: duration,
+            },
+        )
         .await?;
 
     output::success(&response.message);
-    output::kv(&[("prefix", &response.prefix), ("expires", &response.end_time)]);
+    output::kv(&[
+        ("prefix", &response.prefix),
+        ("expires", &response.end_time),
+    ]);
     output::hint("nxthdr peering prefix list");
 
     Ok(())
@@ -111,7 +127,14 @@ pub async fn prefix_rpki(prefix: &str, enabled: bool) -> anyhow::Result<()> {
     output::success(&response.message);
     output::kv(&[
         ("prefix", prefix),
-        ("rpki", if response.rpki_enabled { "enabled" } else { "disabled" }),
+        (
+            "rpki",
+            if response.rpki_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            },
+        ),
     ]);
 
     Ok(())
@@ -140,7 +163,9 @@ pub async fn peerlab_env() -> anyhow::Result<()> {
         }
     };
 
-    let prefixes = user_info.active_leases.iter()
+    let prefixes = user_info
+        .active_leases
+        .iter()
         .map(|l| l.prefix.as_str())
         .collect::<Vec<_>>()
         .join(",");
@@ -207,17 +232,33 @@ pub async fn routes() -> anyhow::Result<()> {
             .unwrap_or_else(|| "-".to_string());
         rows.push(vec![
             lease.prefix.clone(),
-            if visible { "yes".to_string() } else { "no".to_string() },
+            if visible {
+                "yes".to_string()
+            } else {
+                "no".to_string()
+            },
             propagation,
             vis.collector_count().to_string(),
             vis.peer_count().to_string(),
-            if origins.is_empty() { "-".to_string() } else { origins.join(", ") },
+            if origins.is_empty() {
+                "-".to_string()
+            } else {
+                origins.join(", ")
+            },
             vis.shortest_path().unwrap_or_else(|| "-".to_string()),
         ]);
     }
 
     output::table(
-        &["prefix", "visible", "propagation", "collectors", "peers", "origin", "shortest path"],
+        &[
+            "prefix",
+            "visible",
+            "propagation",
+            "collectors",
+            "peers",
+            "origin",
+            "shortest path",
+        ],
         &rows,
     );
 
@@ -228,7 +269,9 @@ pub async fn routes() -> anyhow::Result<()> {
             "\nseen by public BGP collectors (RIPE RIS){suffix}; origin is AS215011 — your ASN is stripped on export"
         ));
         if any_invisible {
-            output::hint("not visible? new announcements take a few minutes to propagate — re-run shortly");
+            output::hint(
+                "not visible? new announcements take a few minutes to propagate — re-run shortly",
+            );
         }
     }
 
@@ -240,23 +283,27 @@ pub async fn lookup(prefix: &str) -> anyhow::Result<()> {
 
     if !vis.is_visible() {
         if !output::empty(&["origin", "as_path", "peers", "collectors"]) {
-            output::info(&format!("{prefix} is not visible in any RIPE RIS collector"));
+            output::info(&format!(
+                "{prefix} is not visible in any RIPE RIS collector"
+            ));
         }
         return Ok(());
     }
 
     if output::is_text() {
         let origins = vis.origins();
-        let origin_str = if origins.is_empty() { "-".to_string() } else { origins.join(", ") };
+        let origin_str = if origins.is_empty() {
+            "-".to_string()
+        } else {
+            origins.join(", ")
+        };
         let collectors = vis.collector_count().to_string();
         let peers = vis.peer_count().to_string();
-        let propagation = ris::full_feed_peers()
-            .await
-            .ok()
-            .and_then(|ff| {
-                let total = ff.for_resource(prefix);
-                ris::propagation_pct(vis.peer_count(), total).map(|p| format!("{p}% of {total} full-feed RIS peers"))
-            });
+        let propagation = ris::full_feed_peers().await.ok().and_then(|ff| {
+            let total = ff.for_resource(prefix);
+            ris::propagation_pct(vis.peer_count(), total)
+                .map(|p| format!("{p}% of {total} full-feed RIS peers"))
+        });
         output::section(&format!("looking glass: {prefix}"));
         let mut pairs: Vec<(&str, &str)> = vec![
             ("collectors", &collectors),
@@ -275,7 +322,11 @@ pub async fn lookup(prefix: &str) -> anyhow::Result<()> {
 
     let paths = vis.paths();
     // Machine formats (JSON/CSV) emit every path; the terminal table is capped.
-    let shown = if output::is_text() { paths.len().min(20) } else { paths.len() };
+    let shown = if output::is_text() {
+        paths.len().min(20)
+    } else {
+        paths.len()
+    };
     let rows: Vec<Vec<String>> = paths
         .iter()
         .take(shown)
@@ -292,7 +343,10 @@ pub async fn lookup(prefix: &str) -> anyhow::Result<()> {
     output::table(&["origin", "as_path", "peers", "collectors"], &rows);
 
     if output::is_text() && paths.len() > shown {
-        output::info(&format!("\n… and {} more distinct paths", paths.len() - shown));
+        output::info(&format!(
+            "\n… and {} more distinct paths",
+            paths.len() - shown
+        ));
     }
 
     Ok(())

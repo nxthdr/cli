@@ -120,9 +120,12 @@ impl Visibility {
             })
             .collect();
         paths.sort_by(|a, b| {
-            b.peers
-                .cmp(&a.peers)
-                .then_with(|| a.as_path.split_whitespace().count().cmp(&b.as_path.split_whitespace().count()))
+            b.peers.cmp(&a.peers).then_with(|| {
+                a.as_path
+                    .split_whitespace()
+                    .count()
+                    .cmp(&b.as_path.split_whitespace().count())
+            })
         });
         paths
     }
@@ -188,10 +191,16 @@ pub async fn full_feed_peers() -> Result<FullFeedPeers> {
         .context("Failed to query RIPEstat")?;
 
     if !resp.status().is_success() {
-        anyhow::bail!("RIPEstat ris-peer-count failed with status {}", resp.status());
+        anyhow::bail!(
+            "RIPEstat ris-peer-count failed with status {}",
+            resp.status()
+        );
     }
 
-    let body: PeerCountEnvelope = resp.json().await.context("Failed to parse RIPEstat response")?;
+    let body: PeerCountEnvelope = resp
+        .json()
+        .await
+        .context("Failed to parse RIPEstat response")?;
     // full_feed is a time series; take the latest sample for each family.
     let latest = |series: &FeedSeries| series.full_feed.last().map(|s| s.count).unwrap_or(0);
     Ok(FullFeedPeers {
@@ -236,7 +245,10 @@ pub async fn looking_glass(resource: &str) -> Result<Visibility> {
         );
     }
 
-    let envelope: Envelope = resp.json().await.context("Failed to parse RIPEstat response")?;
+    let envelope: Envelope = resp
+        .json()
+        .await
+        .context("Failed to parse RIPEstat response")?;
     Ok(Visibility {
         query_time: envelope.data.query_time,
         rrcs: envelope.data.rrcs,

@@ -46,7 +46,9 @@ pub async fn agents() -> anyhow::Result<()> {
         health: Option<AgentHealth>,
     }
 
-    let agents: Vec<Agent> = api::ApiClient::new_saimiris().get_public("/api/agents").await?;
+    let agents: Vec<Agent> = api::ApiClient::new_saimiris()
+        .get_public("/api/agents")
+        .await?;
 
     if agents.is_empty() {
         if !output::empty(&["id", "status", "prefixes"]) {
@@ -55,25 +57,36 @@ pub async fn agents() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let rows: Vec<Vec<String>> = agents.iter().map(|agent| {
-        let status = match &agent.health {
-            Some(h) if h.healthy => "healthy",
-            Some(_) => "unhealthy",
-            None => "unknown",
-        };
-        let prefixes: Vec<String> = agent.config.as_deref().unwrap_or(&[]).iter()
-            .filter_map(|c| {
-                let prefix = c.src_ipv6_prefix.as_deref()?;
-                let name = c.name.as_deref().unwrap_or("default");
-                Some(format!("{prefix} ({name})"))
-            })
-            .collect();
-        vec![
-            agent.id.clone(),
-            status.to_string(),
-            if prefixes.is_empty() { "-".to_string() } else { prefixes.join(", ") },
-        ]
-    }).collect();
+    let rows: Vec<Vec<String>> = agents
+        .iter()
+        .map(|agent| {
+            let status = match &agent.health {
+                Some(h) if h.healthy => "healthy",
+                Some(_) => "unhealthy",
+                None => "unknown",
+            };
+            let prefixes: Vec<String> = agent
+                .config
+                .as_deref()
+                .unwrap_or(&[])
+                .iter()
+                .filter_map(|c| {
+                    let prefix = c.src_ipv6_prefix.as_deref()?;
+                    let name = c.name.as_deref().unwrap_or("default");
+                    Some(format!("{prefix} ({name})"))
+                })
+                .collect();
+            vec![
+                agent.id.clone(),
+                status.to_string(),
+                if prefixes.is_empty() {
+                    "-".to_string()
+                } else {
+                    prefixes.join(", ")
+                },
+            ]
+        })
+        .collect();
 
     output::table(&["id", "status", "prefixes"], &rows);
 
@@ -85,7 +98,7 @@ pub async fn send(
     agent_ids: Vec<String>,
     src_ip: Option<String>,
 ) -> anyhow::Result<()> {
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     use std::io::BufRead;
 
     #[derive(Deserialize)]
@@ -123,7 +136,8 @@ pub async fn send(
 
     let reader: Box<dyn BufRead> = match file {
         Some(ref path) => Box::new(std::io::BufReader::new(
-            std::fs::File::open(path).with_context(|| format!("Failed to open '{}'", path.display()))?,
+            std::fs::File::open(path)
+                .with_context(|| format!("Failed to open '{}'", path.display()))?,
         )),
         None => Box::new(std::io::BufReader::new(std::io::stdin())),
     };
@@ -143,9 +157,18 @@ pub async fn send(
             );
         }
         let dst_addr = parts[0].trim();
-        let src_port: u16 = parts[1].trim().parse().with_context(|| format!("Line {}: invalid src_port", lineno + 1))?;
-        let dst_port: u16 = parts[2].trim().parse().with_context(|| format!("Line {}: invalid dst_port", lineno + 1))?;
-        let ttl: u8 = parts[3].trim().parse().with_context(|| format!("Line {}: invalid ttl", lineno + 1))?;
+        let src_port: u16 = parts[1]
+            .trim()
+            .parse()
+            .with_context(|| format!("Line {}: invalid src_port", lineno + 1))?;
+        let dst_port: u16 = parts[2]
+            .trim()
+            .parse()
+            .with_context(|| format!("Line {}: invalid dst_port", lineno + 1))?;
+        let ttl: u8 = parts[3]
+            .trim()
+            .parse()
+            .with_context(|| format!("Line {}: invalid ttl", lineno + 1))?;
         let protocol = parts[4].trim().to_lowercase();
         probes.push(json!([dst_addr, src_port, dst_port, ttl, protocol]));
     }
@@ -169,7 +192,9 @@ pub async fn send(
                 .ok_or_else(|| anyhow::anyhow!(
                     "No prefix allocated for agent '{agent_id}'. Run 'nxthdr probing agent list' to see available agents."
                 ))?;
-            let user_prefix = &agent_entry.prefixes.first()
+            let user_prefix = &agent_entry
+                .prefixes
+                .first()
                 .ok_or_else(|| anyhow::anyhow!("Agent '{agent_id}' has no configured prefix"))?
                 .user_prefix;
             let derived = src_ip_from_prefix(user_prefix, host48)?;
@@ -177,12 +202,16 @@ pub async fn send(
             derived
         };
         tracing::debug!("agent {agent_id} using src_ip={ip}");
-        metadata.push(AgentMetadata { id: agent_id.clone(), ip_address: ip });
+        metadata.push(AgentMetadata {
+            id: agent_id.clone(),
+            ip_address: ip,
+        });
     }
 
     let probe_count = probes.len();
     // Capture (id, ip) pairs before metadata is moved into the request body.
-    let agent_src: Vec<(String, String)> = metadata.iter()
+    let agent_src: Vec<(String, String)> = metadata
+        .iter()
         .map(|m| (m.id.clone(), m.ip_address.clone()))
         .collect();
 
@@ -190,7 +219,11 @@ pub async fn send(
         .post("/api/probes", &SubmitProbesRequest { metadata, probes })
         .await?;
 
-    let agents_label = format!("{probe_count} × {} agent{}", agent_ids.len(), if agent_ids.len() == 1 { "" } else { "s" });
+    let agents_label = format!(
+        "{probe_count} × {} agent{}",
+        agent_ids.len(),
+        if agent_ids.len() == 1 { "" } else { "s" }
+    );
     let mut pairs: Vec<(&str, &str)> = vec![("id", &response.id), ("probes", &agents_label)];
     for (agent, ip) in &agent_src {
         pairs.push((agent.as_str(), ip.as_str()));
@@ -198,7 +231,11 @@ pub async fn send(
     output::success("measurement submitted");
     output::kv(&pairs);
 
-    let hint = agent_src.iter().map(|(_, ip)| format!("--src-ip {ip}")).collect::<Vec<_>>().join(" ");
+    let hint = agent_src
+        .iter()
+        .map(|(_, ip)| format!("--src-ip {ip}"))
+        .collect::<Vec<_>>()
+        .join(" ");
     output::hint(&format!("nxthdr probing measurement get {}", response.id));
     output::hint(&format!("nxthdr probing reply list {hint}"));
 
@@ -210,13 +247,21 @@ pub async fn results(
     since: Option<String>,
     until: Option<String>,
 ) -> anyhow::Result<()> {
-    let in_clause = src_ips.iter().map(|ip| format!("'{ip}'")).collect::<Vec<_>>().join(", ");
+    let in_clause = src_ips
+        .iter()
+        .map(|ip| format!("'{ip}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let mut conditions = format!("probe_src_addr IN ({in_clause})");
     if let Some(ref s) = since {
-        conditions.push_str(&format!(" AND time_received_ns >= parseDateTimeBestEffort('{s}')"));
+        conditions.push_str(&format!(
+            " AND time_received_ns >= parseDateTimeBestEffort('{s}')"
+        ));
     }
     if let Some(ref u) = until {
-        conditions.push_str(&format!(" AND time_received_ns <= parseDateTimeBestEffort('{u}')"));
+        conditions.push_str(&format!(
+            " AND time_received_ns <= parseDateTimeBestEffort('{u}')"
+        ));
     }
 
     let sql = format!(
@@ -234,14 +279,19 @@ pub async fn results(
         return Ok(());
     }
 
-    let data: Vec<Vec<String>> = rows.iter().map(|row| vec![
-        row["agent_id"].as_str().unwrap_or("-").to_string(),
-        row["probe_src_addr"].as_str().unwrap_or("-").to_string(),
-        row["probe_dst_addr"].as_str().unwrap_or("-").to_string(),
-        row["probe_ttl"].as_u64().unwrap_or(0).to_string(),
-        row["reply_src_addr"].as_str().unwrap_or("-").to_string(),
-        format!("{:.2}ms", row["rtt"].as_u64().unwrap_or(0) as f64 / 1000.0),
-    ]).collect();
+    let data: Vec<Vec<String>> = rows
+        .iter()
+        .map(|row| {
+            vec![
+                row["agent_id"].as_str().unwrap_or("-").to_string(),
+                row["probe_src_addr"].as_str().unwrap_or("-").to_string(),
+                row["probe_dst_addr"].as_str().unwrap_or("-").to_string(),
+                row["probe_ttl"].as_u64().unwrap_or(0).to_string(),
+                row["reply_src_addr"].as_str().unwrap_or("-").to_string(),
+                format!("{:.2}ms", row["rtt"].as_u64().unwrap_or(0) as f64 / 1000.0),
+            ]
+        })
+        .collect();
 
     output::table(&["agent", "src", "dst", "ttl", "reply", "rtt"], &data);
 
@@ -258,10 +308,17 @@ async fn query_clickhouse(sql: &str) -> anyhow::Result<Vec<serde_json::Value>> {
         .context("Failed to connect to ClickHouse")?;
 
     if !resp.status().is_success() {
-        anyhow::bail!("ClickHouse error {}: {}", resp.status(), resp.text().await.unwrap_or_default().trim());
+        anyhow::bail!(
+            "ClickHouse error {}: {}",
+            resp.status(),
+            resp.text().await.unwrap_or_default().trim()
+        );
     }
 
-    let text = resp.text().await.context("Failed to read ClickHouse response")?;
+    let text = resp
+        .text()
+        .await
+        .context("Failed to read ClickHouse response")?;
     text.lines()
         .filter(|l| !l.is_empty())
         .map(|l| serde_json::from_str(l).context("Failed to parse ClickHouse row"))
@@ -321,7 +378,10 @@ pub async fn measurements(
     sort: SortField,
     reverse: bool,
 ) -> anyhow::Result<()> {
-    anyhow::ensure!((1..=100).contains(&limit), "--limit must be between 1 and 100");
+    anyhow::ensure!(
+        (1..=100).contains(&limit),
+        "--limit must be between 1 and 100"
+    );
 
     #[derive(Deserialize)]
     struct Measurement {
@@ -341,7 +401,11 @@ pub async fn measurements(
     if !status.is_empty() {
         // enum values are ASCII-safe; keep the comma literal so the gateway, which
         // splits on ',' after URL-decoding, sees the separator.
-        let joined = status.iter().map(|s| s.as_query()).collect::<Vec<_>>().join(",");
+        let joined = status
+            .iter()
+            .map(|s| s.as_query())
+            .collect::<Vec<_>>()
+            .join(",");
         query.push(format!("status={joined}"));
     }
     if let Some(ref s) = since {
@@ -370,16 +434,19 @@ pub async fn measurements(
         return Ok(());
     }
 
-    let rows: Vec<Vec<String>> = measurements.iter().map(|m| {
-        let status = measurement_label(m.measurement_cancelled, m.measurement_complete);
-        vec![
-            m.measurement_id.clone(),
-            m.started_at.clone(),
-            format!("{}/{}", m.completed_agents, m.total_agents),
-            format!("{}/{}", m.total_sent_probes, m.total_expected_probes),
-            status.to_string(),
-        ]
-    }).collect();
+    let rows: Vec<Vec<String>> = measurements
+        .iter()
+        .map(|m| {
+            let status = measurement_label(m.measurement_cancelled, m.measurement_complete);
+            vec![
+                m.measurement_id.clone(),
+                m.started_at.clone(),
+                format!("{}/{}", m.completed_agents, m.total_agents),
+                format!("{}/{}", m.total_sent_probes, m.total_expected_probes),
+                status.to_string(),
+            ]
+        })
+        .collect();
 
     output::table(&["id", "started", "agents", "probes", "status"], &rows);
     output::hint("nxthdr probing measurement get <id>");
@@ -424,20 +491,42 @@ pub async fn measurement_status(id: &str) -> anyhow::Result<()> {
         output::kv(&[
             ("id", &status.measurement_id),
             ("status", overall),
-            ("agents", &format!("{}/{} complete", status.completed_agents, status.total_agents)),
-            ("probes", &format!("{}/{} sent", status.total_sent_probes, status.total_expected_probes)),
+            (
+                "agents",
+                &format!(
+                    "{}/{} complete",
+                    status.completed_agents, status.total_agents
+                ),
+            ),
+            (
+                "probes",
+                &format!(
+                    "{}/{} sent",
+                    status.total_sent_probes, status.total_expected_probes
+                ),
+            ),
         ]);
     }
 
     if !status.agents.is_empty() {
-        let rows: Vec<Vec<String>> = status.agents.iter().map(|a| {
-            let done = if a.cancelled { "cancelled" } else if a.is_complete { "yes" } else { "no" };
-            vec![
-                a.agent_id.clone(),
-                format!("{}/{}", a.sent_probes, a.expected_probes),
-                done.to_string(),
-            ]
-        }).collect();
+        let rows: Vec<Vec<String>> = status
+            .agents
+            .iter()
+            .map(|a| {
+                let done = if a.cancelled {
+                    "cancelled"
+                } else if a.is_complete {
+                    "yes"
+                } else {
+                    "no"
+                };
+                vec![
+                    a.agent_id.clone(),
+                    format!("{}/{}", a.sent_probes, a.expected_probes),
+                    done.to_string(),
+                ]
+            })
+            .collect();
         output::table(&["agent", "probes sent/expected", "status"], &rows);
     }
 
@@ -453,7 +542,10 @@ pub async fn cancel(id: &str) -> anyhow::Result<()> {
     }
 
     let resp: CancelResponse = api::ApiClient::new_saimiris()
-        .post(&format!("/api/measurement/{id}/cancel"), &serde_json::json!({}))
+        .post(
+            &format!("/api/measurement/{id}/cancel"),
+            &serde_json::json!({}),
+        )
         .await?;
 
     if resp.cancelled {
@@ -477,7 +569,10 @@ pub async fn cancel(id: &str) -> anyhow::Result<()> {
 /// identifiable as a group without any server-side state.
 fn random_host_48() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64;
     let p = std::process::id() as u64;
     let mut x = t ^ (p.wrapping_mul(0x9e3779b97f4a7c15));
     x ^= x << 13;
@@ -494,7 +589,11 @@ fn src_ip_from_prefix(user_prefix: &str, host48: u64) -> anyhow::Result<String> 
     let prefix_len: u32 = len_str.parse()?;
     let base = u128::from(Ipv6Addr::from_str(addr_str)?);
     let host_bits = 128u32.saturating_sub(prefix_len);
-    let host_mask: u128 = if host_bits >= 128 { u128::MAX } else { (1u128 << host_bits) - 1 };
+    let host_mask: u128 = if host_bits >= 128 {
+        u128::MAX
+    } else {
+        (1u128 << host_bits) - 1
+    };
     let host = (host48 as u128).max(1) & host_mask;
     Ok(Ipv6Addr::from((base & !host_mask) | host).to_string())
 }

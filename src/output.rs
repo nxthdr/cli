@@ -39,7 +39,11 @@ fn csv_field(s: &str) -> String {
 }
 
 fn csv_line(cells: &[&str]) -> String {
-    cells.iter().map(|c| csv_field(c)).collect::<Vec<_>>().join(",")
+    cells
+        .iter()
+        .map(|c| csv_field(c))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// Render an empty result set for the active format. In text mode it does
