@@ -75,6 +75,18 @@ enum ProbingCommands {
     Measurements {
         #[arg(long, default_value_t = 20, help = "Maximum number of measurements to list (1-100)")]
         limit: u32,
+        #[arg(long, value_delimiter = ',', help = "Filter by status (comma-separated): complete, in-progress, cancelled")]
+        status: Vec<probing::StatusFilter>,
+        #[arg(long, help = "Only measurements started at/after this time (e.g. '2026-03-22' or '2026-03-22 10:00:00')")]
+        since: Option<String>,
+        #[arg(long, help = "Only measurements started at/before this time")]
+        until: Option<String>,
+        #[arg(long, help = "Only measurements involving this agent ID")]
+        agent: Option<String>,
+        #[arg(long, value_enum, default_value = "updated", help = "Sort by 'started' or 'updated' time")]
+        sort: probing::SortField,
+        #[arg(long, help = "Reverse the order (oldest first)")]
+        reverse: bool,
     },
     #[command(about = "Get status of a measurement by ID")]
     MeasurementStatus {
@@ -180,7 +192,9 @@ async fn handle_probing(command: ProbingCommands) -> anyhow::Result<()> {
         ProbingCommands::Agents => probing::agents().await,
         ProbingCommands::Send { file, agent, src_ip } => probing::send(file, agent, src_ip).await,
         ProbingCommands::Results { src_ip, since, until } => probing::results(src_ip, since, until).await,
-        ProbingCommands::Measurements { limit } => probing::measurements(limit).await,
+        ProbingCommands::Measurements { limit, status, since, until, agent, sort, reverse } => {
+            probing::measurements(limit, status, since, until, agent, sort, reverse).await
+        }
         ProbingCommands::MeasurementStatus { id } => probing::measurement_status(&id).await,
         ProbingCommands::Cancel { id } => probing::cancel(&id).await,
     }
