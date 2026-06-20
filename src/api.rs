@@ -34,8 +34,8 @@ impl ApiClient {
     }
 
     async fn get_valid_token(&self) -> Result<String> {
-        let tokens =
-            config::load_tokens().context("Not logged in. Please run 'nxthdr auth login' first.")?;
+        let tokens = config::load_tokens()
+            .context("Not logged in. Please run 'nxthdr auth login' first.")?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -67,7 +67,10 @@ impl ApiClient {
             anyhow::bail!("API request failed with status {}: {}", status, error_body);
         }
 
-        response.json::<T>().await.context("Failed to parse response")
+        response
+            .json::<T>()
+            .await
+            .context("Failed to parse response")
     }
 
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
@@ -159,7 +162,10 @@ impl ApiClient {
             anyhow::bail!("API request failed with status {}: {}", status, error_body);
         }
 
-        response.json::<T>().await.context("Failed to parse response")
+        response
+            .json::<T>()
+            .await
+            .context("Failed to parse response")
     }
 
     pub async fn delete(&self, path: &str) -> Result<()> {

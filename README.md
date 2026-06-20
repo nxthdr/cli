@@ -8,6 +8,23 @@ Command-line interface for the [nxthdr](https://nxthdr.dev) platform — the pee
 cargo install nxthdr
 ```
 
+## Shell completions
+
+Generate a completion script with `nxthdr completions <shell>` and install it where your shell looks for completions:
+
+```bash
+# fish
+nxthdr completions fish > ~/.config/fish/completions/nxthdr.fish
+
+# zsh — ensure the target dir is on $fpath, then restart the shell
+nxthdr completions zsh > ~/.zfunc/_nxthdr
+
+# bash
+nxthdr completions bash > ~/.local/share/bash-completion/completions/nxthdr
+```
+
+Supported shells: `bash`, `zsh`, `fish`, `elvish`, `powershell`.
+
 ## Command structure
 
 Commands follow a consistent `nxthdr <group> <resource> <verb>` shape:
@@ -20,11 +37,12 @@ nxthdr
 │  ├─ prefix   list · request <hours> · revoke <prefix> · rpki {enable,disable} <prefix>
 │  ├─ route    list · lookup <prefix>
 │  └─ peerlab  env
-└─ probing
-   ├─ agent        list
-   ├─ credits      get
-   ├─ measurement  send <file> · list · get <id> · cancel <id>
-   └─ reply        list --src-ip <ip>
+├─ probing
+│  ├─ agent        list
+│  ├─ credits      get
+│  ├─ measurement  send <file> · list · get <id> · cancel <id>
+│  └─ reply        list --src-ip <ip>
+└─ completions  <shell>   # bash · zsh · fish · elvish · powershell
 ```
 
 Run `nxthdr help` or `nxthdr <group> <resource> --help` for any command's options.
