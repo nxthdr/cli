@@ -30,14 +30,19 @@ All service endpoints fall back to production but can be overridden via env vars
 
 Publishing to crates.io is **git-tag-driven**: the `publish` job in `cicd.yml` runs `cargo publish` only on a `refs/tags/` push (after `tests` pass). Auth is **crates.io Trusted Publishing (OIDC)** — `rust-lang/crates-io-auth-action` mints a short-lived token at run time (auto-revoked when the job ends), so there is **no `CARGO_REGISTRY_TOKEN` secret**. The trust is configured on crates.io (crate Settings → Trusted Publishing → GitHub: owner `nxthdr`, repo `cli`, workflow `cicd.yml`, no environment); the job needs `id-token: write`. To cut a release:
 
-1. Bump `version` in `Cargo.toml` (semver — breaking command changes warrant a minor bump pre-1.0). Commit as `chore: Release nxthdr version X.Y.Z` and land it on `main`.
-2. Tag that commit and push the tag (tags are not ruleset-protected, so this is a direct push):
+1. Bump `version` in `Cargo.toml` (semver — breaking command changes warrant a minor bump pre-1.0) and land it on `main` **via a PR** — either its own `chore: Release nxthdr version X.Y.Z` PR or folded into the feature PR that motivates the release. `main` is ruleset-protected (review required) and you can't approve your own PR, so a solo maintainer bypasses the review gate with an admin merge: `gh pr merge <n> --squash --admin`.
+2. Tag the merged commit on `main` and push the tag — tags are **not** ruleset-protected, so this is a direct push (no PR):
    ```bash
    git tag vX.Y.Z && git push origin vX.Y.Z
    ```
-3. The tag push publishes `nxthdr` X.Y.Z to crates.io and pushes docker images tagged `X.Y.Z` / `X.Y`.
+   The bump must already be on `main` first: the `publish` job **verifies the tag matches `Cargo.toml`** (stripping the leading `v`) and fails fast on a mismatch.
+3. The tag push runs CI; on success it publishes `nxthdr` X.Y.Z to crates.io (via OIDC) and pushes docker images tagged `X.Y.Z` / `X.Y`. Confirm the `publish` job is green and crates.io shows the new version.
+4. **Create the GitHub Release** — CI does *not* do this, but every prior version has one. Match the repo's auto-generated-notes style:
+   ```bash
+   gh release create vX.Y.Z --generate-notes --latest --verify-tag
+   ```
 
-Gotchas: the `Cargo.toml` version must be a not-yet-published version — `cargo publish` hard-fails on a duplicate. The `publish` job now **verifies the tag matches `Cargo.toml`** (stripping the leading `v`) and fails fast on a mismatch, so the version bump must land on `main` *before* you tag. `Cargo.lock` is gitignored (nothing to bump).
+Gotchas: the `Cargo.toml` version must be a not-yet-published version — `cargo publish` hard-fails on a duplicate, and crates.io is publish-once (you can only *yank*, never unpublish). `Cargo.lock` is gitignored (nothing to bump). To re-publish an already-pushed tag after changing the workflow itself, delete and re-push the tag (`git push origin :vX.Y.Z`, then re-tag `origin/main` and push) — `gh run rerun` would reuse the workflow from the tag's *old* commit, not the new one.
 
 ## Architecture
 
