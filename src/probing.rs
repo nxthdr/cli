@@ -279,7 +279,48 @@ fn measurement_label(cancelled: bool, complete: bool) -> &'static str {
     }
 }
 
-pub async fn measurements(limit: u32) -> anyhow::Result<()> {
+/// Status filter; clap derives kebab-case names: complete, in-progress, cancelled.
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum StatusFilter {
+    Complete,
+    InProgress,
+    Cancelled,
+}
+
+impl StatusFilter {
+    fn as_query(self) -> &'static str {
+        match self {
+            StatusFilter::Complete => "complete",
+            StatusFilter::InProgress => "in-progress",
+            StatusFilter::Cancelled => "cancelled",
+        }
+    }
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum SortField {
+    Started,
+    Updated,
+}
+
+impl SortField {
+    fn as_query(self) -> &'static str {
+        match self {
+            SortField::Started => "started",
+            SortField::Updated => "updated",
+        }
+    }
+}
+
+pub async fn measurements(
+    limit: u32,
+    status: Vec<StatusFilter>,
+    since: Option<String>,
+    until: Option<String>,
+    agent: Option<String>,
+    sort: SortField,
+    reverse: bool,
+) -> anyhow::Result<()> {
     anyhow::ensure!((1..=100).contains(&limit), "--limit must be between 1 and 100");
 
     #[derive(Deserialize)]
@@ -295,8 +336,30 @@ pub async fn measurements(limit: u32) -> anyhow::Result<()> {
         started_at: String,
     }
 
+    // Filters are applied server-side, before the limit.
+    let mut query: Vec<String> = vec![format!("limit={limit}")];
+    if !status.is_empty() {
+        // enum values are ASCII-safe; keep the comma literal so the gateway, which
+        // splits on ',' after URL-decoding, sees the separator.
+        let joined = status.iter().map(|s| s.as_query()).collect::<Vec<_>>().join(",");
+        query.push(format!("status={joined}"));
+    }
+    if let Some(ref s) = since {
+        query.push(format!("since={}", urlencoding::encode(s)));
+    }
+    if let Some(ref u) = until {
+        query.push(format!("until={}", urlencoding::encode(u)));
+    }
+    if let Some(ref a) = agent {
+        query.push(format!("agent={}", urlencoding::encode(a)));
+    }
+    query.push(format!("sort={}", sort.as_query()));
+    if reverse {
+        query.push("reverse=true".to_string());
+    }
+
     let measurements: Vec<Measurement> = api::ApiClient::new_saimiris()
-        .get(&format!("/api/measurements?limit={limit}"))
+        .get(&format!("/api/measurements?{}", query.join("&")))
         .await?;
 
     if measurements.is_empty() {
