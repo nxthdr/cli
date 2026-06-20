@@ -199,7 +199,7 @@ pub async fn send(
     output::kv(&pairs);
 
     let hint = agent_src.iter().map(|(_, ip)| format!("--src-ip {ip}")).collect::<Vec<_>>().join(" ");
-    output::hint(&format!("nxthdr probing measurement-status {}", response.id));
+    output::hint(&format!("nxthdr probing measurement status {}", response.id));
     output::hint(&format!("nxthdr probing results {hint}"));
 
     Ok(())
@@ -382,7 +382,7 @@ pub async fn measurements(
     }).collect();
 
     output::table(&["id", "started", "agents", "probes", "status"], &rows);
-    output::hint("nxthdr probing measurement-status <id>");
+    output::hint("nxthdr probing measurement status <id>");
 
     Ok(())
 }
@@ -467,7 +467,7 @@ pub async fn cancel(id: &str) -> anyhow::Result<()> {
         ("agents_cancelled", &resp.agents_cancelled.to_string()),
         ("message", &resp.message),
     ]);
-    output::hint(&format!("nxthdr probing measurement-status {id}"));
+    output::hint(&format!("nxthdr probing measurement status {id}"));
 
     Ok(())
 }
