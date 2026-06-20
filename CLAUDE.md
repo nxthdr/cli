@@ -26,6 +26,19 @@ All service endpoints fall back to production but can be overridden via env vars
 - `NXTHDR_RIS_URL` — RIPEstat (default `https://stat.ripe.net`)
 - `NXTHDR_CLIENT_ID` — Auth0 client id
 
+## Releasing
+
+Publishing to crates.io is **git-tag-driven**: the `publish` job in `cicd.yml` runs `cargo publish` only on a `refs/tags/` push (after `tests` pass). To cut a release:
+
+1. Bump `version` in `Cargo.toml` (semver — breaking command changes warrant a minor bump pre-1.0). Commit as `chore: Release nxthdr version X.Y.Z` and land it on `main`.
+2. Tag that commit and push the tag (tags are not ruleset-protected, so this is a direct push):
+   ```bash
+   git tag vX.Y.Z && git push origin vX.Y.Z
+   ```
+3. The tag push publishes `nxthdr` X.Y.Z to crates.io and pushes docker images tagged `X.Y.Z` / `X.Y`.
+
+Gotchas: the `Cargo.toml` version must equal the tag **and** be a not-yet-published version — `cargo publish` hard-fails on a duplicate, and CI does **not** cross-check tag vs. version, so the bump must land *before* tagging. `Cargo.lock` is gitignored (nothing to bump).
+
 ## Architecture
 
 The CLI is organized as thin layers; command modules call a shared HTTP client and route all user-facing output through one module.
