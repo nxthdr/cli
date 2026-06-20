@@ -26,12 +26,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    #[command(about = "Login to nxthdr platform")]
-    Login,
-    #[command(about = "Logout from nxthdr platform")]
-    Logout,
-    #[command(about = "Show authentication status")]
-    Status,
+    #[command(about = "Authenticate with the nxthdr platform")]
+    Auth {
+        #[command(subcommand)]
+        command: AuthCommands,
+    },
     #[command(about = "Interact with peering platform")]
     Peering {
         #[command(subcommand)]
@@ -45,6 +44,16 @@ enum Commands {
 }
 
 #[derive(Subcommand)]
+enum AuthCommands {
+    #[command(about = "Login to nxthdr platform")]
+    Login,
+    #[command(about = "Logout from nxthdr platform")]
+    Logout,
+    #[command(about = "Show authentication status")]
+    Status,
+}
+
+#[derive(Subcommand)]
 enum ProbingCommands {
     #[command(about = "Manage probing agents")]
     Agent {
@@ -52,7 +61,10 @@ enum ProbingCommands {
         command: AgentCommands,
     },
     #[command(about = "Show your probing credits usage")]
-    Credits,
+    Credits {
+        #[command(subcommand)]
+        command: CreditsCommands,
+    },
     #[command(about = "Send, list, and manage measurements")]
     Measurement {
         #[command(subcommand)]
@@ -69,6 +81,12 @@ enum ProbingCommands {
 enum AgentCommands {
     #[command(about = "List available probing agents")]
     List,
+}
+
+#[derive(Subcommand)]
+enum CreditsCommands {
+    #[command(about = "Show your probing credits usage")]
+    Get,
 }
 
 #[derive(Subcommand)]
@@ -139,15 +157,26 @@ enum PeeringCommands {
         #[command(subcommand)]
         command: PrefixCommands,
     },
-    #[command(about = "Looking glass: how a prefix is seen by public BGP collectors (RIPE RIS)")]
-    Lookup {
-        #[arg(help = "Prefix or IP to look up (e.g., 2001:db8::/48)")]
-        prefix: String,
+    #[command(about = "Inspect prefix visibility in public BGP collectors (RIPE RIS)")]
+    Route {
+        #[command(subcommand)]
+        command: RouteCommands,
     },
     #[command(about = "PeerLab utilities")]
     Peerlab {
         #[command(subcommand)]
         command: PeerlabCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum RouteCommands {
+    #[command(about = "Show your leased prefixes as seen by public BGP collectors (RIPE RIS)")]
+    List,
+    #[command(about = "Looking glass: how a prefix is seen by public BGP collectors (RIPE RIS)")]
+    Lookup {
+        #[arg(help = "Prefix or IP to look up (e.g., 2001:db8::/48)")]
+        prefix: String,
     },
 }
 
@@ -177,8 +206,6 @@ enum PrefixCommands {
         #[arg(help = "Prefix to revoke (e.g., 2001:db8::/48)")]
         prefix: String,
     },
-    #[command(about = "Show your leased prefixes as seen by public BGP collectors (RIPE RIS)")]
-    Routes,
     #[command(about = "Manage RPKI ROA for a leased prefix")]
     Rpki {
         #[command(subcommand)]
@@ -212,9 +239,11 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_max_level(cli.verbose).init();
 
     match cli.command {
-        Commands::Login => handle_login().await?,
-        Commands::Logout => handle_logout()?,
-        Commands::Status => handle_status()?,
+        Commands::Auth { command } => match command {
+            AuthCommands::Login => handle_login().await?,
+            AuthCommands::Logout => handle_logout()?,
+            AuthCommands::Status => handle_status()?,
+        },
         Commands::Peering { command } => handle_peering(command).await?,
         Commands::Probing { command } => handle_probing(command).await?,
     }
@@ -227,7 +256,9 @@ async fn handle_probing(command: ProbingCommands) -> anyhow::Result<()> {
         ProbingCommands::Agent { command } => match command {
             AgentCommands::List => probing::agents().await,
         },
-        ProbingCommands::Credits => probing::credits().await,
+        ProbingCommands::Credits { command } => match command {
+            CreditsCommands::Get => probing::credits().await,
+        },
         ProbingCommands::Measurement { command } => match command {
             MeasurementCommands::Send { file, agent, src_ip } => {
                 probing::send(file, agent, src_ip).await
@@ -255,13 +286,15 @@ async fn handle_peering(command: PeeringCommands) -> anyhow::Result<()> {
             PrefixCommands::List => peering::prefix_list().await,
             PrefixCommands::Request { duration } => peering::prefix_request(duration).await,
             PrefixCommands::Revoke { prefix } => peering::prefix_revoke(&prefix).await,
-            PrefixCommands::Routes => peering::routes().await,
             PrefixCommands::Rpki { command } => match command {
                 RpkiCommands::Enable { prefix } => peering::prefix_rpki(&prefix, true).await,
                 RpkiCommands::Disable { prefix } => peering::prefix_rpki(&prefix, false).await,
             },
         },
-        PeeringCommands::Lookup { prefix } => peering::lookup(&prefix).await,
+        PeeringCommands::Route { command } => match command {
+            RouteCommands::List => peering::routes().await,
+            RouteCommands::Lookup { prefix } => peering::lookup(&prefix).await,
+        },
         PeeringCommands::Peerlab { command } => match command {
             PeerlabCommands::Env => peering::peerlab_env().await,
         },
@@ -274,18 +307,18 @@ async fn handle_login() -> anyhow::Result<()> {
 
         if tokens.expires_at >= now_secs() {
             output::kv(&[("auth", "already logged in")]);
-            output::hint("nxthdr logout  # to switch accounts");
+            output::hint("nxthdr auth logout  # to switch accounts");
             return Ok(());
         }
 
         if tokens.refresh_token.is_empty() {
-            anyhow::bail!("access token expired and no refresh token available — run 'nxthdr logout' then 'nxthdr login'");
+            anyhow::bail!("access token expired and no refresh token available — run 'nxthdr auth logout' then 'nxthdr auth login'");
         }
 
         output::info("refreshing token...");
         let (access_token, refresh_token, expires_at) = auth::refresh_access_token(&tokens.refresh_token)
             .await
-            .map_err(|e| anyhow::anyhow!("failed to refresh token: {e} — run 'nxthdr logout' then 'nxthdr login'"))?;
+            .map_err(|e| anyhow::anyhow!("failed to refresh token: {e} — run 'nxthdr auth logout' then 'nxthdr auth login'"))?;
         config::save_tokens(&config::TokenStorage { access_token, refresh_token, expires_at })?;
         output::success("token refreshed");
         return Ok(());
@@ -322,7 +355,7 @@ fn handle_status() -> anyhow::Result<()> {
 
     if !config::tokens_exist() {
         output::kv(&[("auth", "not logged in")]);
-        output::hint("nxthdr login");
+        output::hint("nxthdr auth login");
         return Ok(());
     }
 
@@ -331,7 +364,7 @@ fn handle_status() -> anyhow::Result<()> {
 
     if tokens.expires_at < now {
         output::kv(&[("auth", "logged in"), ("token", "expired")]);
-        output::hint("nxthdr login  # to refresh");
+        output::hint("nxthdr auth login  # to refresh");
     } else {
         let secs = tokens.expires_at - now;
         let expiry = format!("valid {}h {}m", secs / 3600, (secs % 3600) / 60);

@@ -43,7 +43,7 @@ pub fn load_tokens() -> Result<TokenStorage> {
     let token_path = get_token_path()?;
 
     if !token_path.exists() {
-        anyhow::bail!("No tokens found. Please run 'nxthdr login' first.");
+        anyhow::bail!("No tokens found. Please run 'nxthdr auth login' first.");
     }
 
     let json = fs::read_to_string(&token_path).context("Failed to read tokens file")?;

@@ -35,7 +35,7 @@ impl ApiClient {
 
     async fn get_valid_token(&self) -> Result<String> {
         let tokens =
-            config::load_tokens().context("Not logged in. Please run 'nxthdr login' first.")?;
+            config::load_tokens().context("Not logged in. Please run 'nxthdr auth login' first.")?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -44,7 +44,7 @@ impl ApiClient {
 
         if tokens.expires_at < now {
             config::delete_tokens()?;
-            anyhow::bail!("Access token expired. Please run 'nxthdr login' again.");
+            anyhow::bail!("Access token expired. Please run 'nxthdr auth login' again.");
         }
 
         Ok(tokens.access_token)

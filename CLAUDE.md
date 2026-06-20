@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cargo build                       # build (CI runs `cargo build --verbose`)
 cargo test                        # run tests (CI runs `cargo test --verbose`)
 cargo test <name>                 # run a single test by name substring
-cargo run -- <args>               # run locally, e.g. `cargo run -- peering prefix routes`
+cargo run -- <args>               # run locally, e.g. `cargo run -- peering route list`
 cargo run -- -o json <args>       # force JSON output
 cargo fmt && cargo clippy         # format + lint (not enforced in CI, but expected)
 ```
@@ -61,7 +61,7 @@ The CLI is organized as thin layers; command modules call a shared HTTP client a
 
 ## Domain notes
 
-- **Peering / RIS:** leased prefixes are announced via PeerLab's export ASN **AS215011** — a user's private ASN is stripped on export, so `peering prefix routes` reports AS215011 as origin. Visibility/propagation come from public RIPE RIS collectors and lag announcements by a few minutes.
+- **Peering / RIS:** leased prefixes are announced via PeerLab's export ASN **AS215011** — a user's private ASN is stripped on export, so `peering route list` reports AS215011 as origin. Visibility/propagation come from public RIPE RIS collectors and lag announcements by a few minutes.
 - **Probing source IPs:** `probing measurement send` derives each agent's IPv6 source address by overwriting the host bits of the agent's allocated prefix with a **single shared random 48-bit value** (`random_host_48`), so all replies from one measurement share an identifier and can be queried together without server-side state. `--src-ip` overrides this.
 - **Probe input format:** `probing measurement send` reads CSV lines `dst_addr,src_port,dst_port,ttl,protocol` (protocol `icmpv6`|`udp`) from a file or stdin; `#` comments and blank lines are skipped.
 - **Replies:** `probing reply list` queries the public read-only ClickHouse endpoint (table `saimiris.replies`) directly over HTTP, bypassing the platform API.
